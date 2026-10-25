@@ -1,0 +1,10 @@
+.git
+.venv
+node_modules
+data
+dist
+.env
+.env.*
+*.log
+__pycache__
+docs/screenshots
