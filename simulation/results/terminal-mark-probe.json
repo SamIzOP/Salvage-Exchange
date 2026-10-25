@@ -1,0 +1,7 @@
+{
+  "description": "Isolated neutral-price, 16-Alloy holder buys 4 Alloys at opening quote; compare final marked cargo minus purchase cost.",
+  "without_trade_price": 24.0,
+  "with_trade_price": 24.43,
+  "incremental_marked_score": 6.68,
+  "note": "Illustrates a bounded mark-to-market incentive; not a risk-free liquidation profit or a proof of global optimality."
+}

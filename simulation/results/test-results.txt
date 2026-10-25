@@ -1,0 +1,37 @@
+test_all_bids_reserved (test_economy.EconomyTests.test_all_bids_reserved) ... ok
+test_all_emergency_players_share_finite_protected_reserve (test_economy.EconomyTests.test_all_emergency_players_share_finite_protected_reserve) ... ok
+test_cannot_sell_future_extraction (test_economy.EconomyTests.test_cannot_sell_future_extraction) ... ok
+test_contract_once_and_no_double_counting (test_economy.EconomyTests.test_contract_once_and_no_double_counting) ... ok
+test_damage_and_insurance (test_economy.EconomyTests.test_damage_and_insurance) ... ok
+test_depreciation_including_idle_drones (test_economy.EconomyTests.test_depreciation_including_idle_drones) ... ok
+test_emergency_cannot_mix_with_normal_or_bid (test_economy.EconomyTests.test_emergency_cannot_mix_with_normal_or_bid) ... ok
+test_exclusive_winner_pays_and_losers_still_launch (test_economy.EconomyTests.test_exclusive_winner_pays_and_losers_still_launch) ... ok
+test_fee_round_trip_loses_money_at_fixed_quotes (test_economy.EconomyTests.test_fee_round_trip_loses_money_at_fixed_quotes) ... ok
+test_final_alloy_glut_really_lowers_alloy_price (test_economy.EconomyTests.test_final_alloy_glut_really_lowers_alloy_price) ... ok
+test_final_rules_fuzz_market_bounds (test_economy.EconomyTests.test_final_rules_fuzz_market_bounds) ... ok
+test_final_rules_recovery_rebuilds_without_gifted_credits (test_economy.EconomyTests.test_final_rules_recovery_rebuilds_without_gifted_credits) ... ok
+test_invalid_plan_does_not_mutate_any_player (test_economy.EconomyTests.test_invalid_plan_does_not_mutate_any_player) ... ok
+test_known_price_formula (test_economy.EconomyTests.test_known_price_formula) ... ok
+test_more_supply_can_reduce_commodity_but_raise_stock (test_economy.EconomyTests.test_more_supply_can_reduce_commodity_but_raise_stock) ... ok
+test_neutral_commodity_price (test_economy.EconomyTests.test_neutral_commodity_price) ... ok
+test_no_spending_future_sale_proceeds (test_economy.EconomyTests.test_no_spending_future_sale_proceeds) ... ok
+test_objective_caps_and_losses_offset_investment_gains (test_economy.EconomyTests.test_objective_caps_and_losses_offset_investment_gains) ... ok
+test_observation_contains_no_current_secrets (test_economy.EconomyTests.test_observation_contains_no_current_secrets) ... ok
+test_order_and_position_limits (test_economy.EconomyTests.test_order_and_position_limits) ... ok
+test_own_price_pressure_cannot_fund_fee_round_trip (test_economy.EconomyTests.test_own_price_pressure_cannot_fund_fee_round_trip) ... ok
+test_price_caps_after_rounding (test_economy.EconomyTests.test_price_caps_after_rounding) ... ok
+test_proportional_share_conserves_reserve (test_economy.EconomyTests.test_proportional_share_conserves_reserve) ... ok
+test_protected_recovery_is_not_free_rift_speculation (test_economy.EconomyTests.test_protected_recovery_is_not_free_rift_speculation) ... ok
+test_protected_recovery_survives_exclusive_bid (test_economy.EconomyTests.test_protected_recovery_survives_exclusive_bid) ... ok
+test_purchases_and_repair_cannot_repeat_for_free (test_economy.EconomyTests.test_purchases_and_repair_cannot_repeat_for_free) ... ok
+test_recovery_is_limited_and_does_not_reset_losses (test_economy.EconomyTests.test_recovery_is_limited_and_does_not_reset_losses) ... ok
+test_scan_budget_duplicates_and_limit (test_economy.EconomyTests.test_scan_budget_duplicates_and_limit) ... ok
+test_seed_reproduces_complete_match (test_economy.EconomyTests.test_seed_reproduces_complete_match) ... ok
+test_stock_profit_baselines (test_economy.EconomyTests.test_stock_profit_baselines) ... ok
+test_supply_and_trade_signals_bounded (test_economy.EconomyTests.test_supply_and_trade_signals_bounded) ... ok
+test_tied_bids_have_one_winner (test_economy.EconomyTests.test_tied_bids_have_one_winner) ... ok
+
+----------------------------------------------------------------------
+Ran 32 tests in 0.195s
+
+OK

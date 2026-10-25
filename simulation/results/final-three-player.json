@@ -1,0 +1,545 @@
+{
+  "rules": {
+    "version": "0.2",
+    "base": [
+      24.0,
+      42.0,
+      72.0
+    ],
+    "demand": [
+      2.25,
+      1.5,
+      0.75
+    ],
+    "capacity": [
+      3.0,
+      2.25,
+      1.875
+    ],
+    "reserve": [
+      2.25,
+      1.5,
+      1.125
+    ],
+    "clear": [
+      0.85,
+      0.65,
+      0.45
+    ],
+    "disruption": [
+      0.15,
+      0.25,
+      0.35
+    ],
+    "fuel_use": [
+      1,
+      2,
+      3
+    ],
+    "fuel_cost": 8.0,
+    "deploy_cost": 6.0,
+    "drone_cost": 260.0,
+    "depreciation": 0.12,
+    "repair_cost": 30.0,
+    "insurance_cost": 12.0,
+    "scan_cost": 20.0,
+    "scanner_cost": 70.0,
+    "upgraded_scan_cost": 10.0,
+    "fleet_limit": 5,
+    "fee": 0.02,
+    "bid_min": 1,
+    "bid_max": 120,
+    "commodity_trade": [
+      4.0,
+      2.0,
+      1.0
+    ],
+    "commodity_position": [
+      20.0,
+      12.0,
+      8.0
+    ],
+    "stock_trade": 2,
+    "stock_position": 6,
+    "supply_signal": 0.12,
+    "trade_signal": 0.04,
+    "commodity_pull": 0.06,
+    "event_size": 0.08,
+    "company_output_link": 0.5,
+    "company_cost": [
+      14.0,
+      25.0,
+      44.0
+    ],
+    "company_fixed": [
+      6.0,
+      5.0,
+      4.0
+    ],
+    "stock_profit_signal": 0.35,
+    "stock_trade_signal": 0.02,
+    "stock_pull": 0.04,
+    "contract_qty": [
+      6.0,
+      3.0,
+      2.0
+    ],
+    "contract_score": [
+      165.0,
+      145.0,
+      165.0
+    ],
+    "objective_cap": 120.0,
+    "titan_rate": 5.0,
+    "shark_rate": 0.3,
+    "pioneer_rate": 20.0,
+    "logistics_rate": 40.0,
+    "protected_recovery": true
+  },
+  "suite": "three_player",
+  "seed": 20451027,
+  "games": 2000,
+  "policy_revision": "v2: cautious bidder uses same bid-value ceiling as extractor; no random insurance",
+  "model_sha256": "9272b9fa17a84c2e1630431fc6e8790e2b32dcc659318904500797ada5726fdc",
+  "policies": {
+    "safe_hauler": {
+      "seats": 1200,
+      "win_rate": 0.51958,
+      "ci95": [
+        0.4913,
+        0.54774
+      ],
+      "mean_score": 1511.73,
+      "score_p05": 958.77,
+      "score_p95": 2165.6,
+      "mean_bonus": 64.04,
+      "mean_scan_spend": 0.0,
+      "mean_bid_spend": 79.85
+    },
+    "scanner_heavy": {
+      "seats": 1200,
+      "win_rate": 0.49667,
+      "ci95": [
+        0.46843,
+        0.52492
+      ],
+      "mean_score": 1455.16,
+      "score_p05": 897.61,
+      "score_p95": 2070.94,
+      "mean_bonus": 64.38,
+      "mean_scan_spend": 132.12,
+      "mean_bid_spend": 85.42
+    },
+    "heavy_extractor": {
+      "seats": 1200,
+      "win_rate": 0.38083,
+      "ci95": [
+        0.35378,
+        0.40865
+      ],
+      "mean_score": 1392.77,
+      "score_p05": 822.13,
+      "score_p95": 2135.43,
+      "mean_bonus": 61.7,
+      "mean_scan_spend": 0.0,
+      "mean_bid_spend": 81.98
+    },
+    "pure_trader": {
+      "seats": 1200,
+      "win_rate": 0.1075,
+      "ci95": [
+        0.09121,
+        0.12629
+      ],
+      "mean_score": 1427.91,
+      "score_p05": 1165.52,
+      "score_p95": 1746.13,
+      "mean_bonus": 39.08,
+      "mean_scan_spend": 0.0,
+      "mean_bid_spend": 0.0
+    },
+    "random": {
+      "seats": 1200,
+      "win_rate": 0.16208,
+      "ci95": [
+        0.14232,
+        0.18401
+      ],
+      "mean_score": 1309.21,
+      "score_p05": 830.0,
+      "score_p95": 1859.29,
+      "mean_bonus": 50.31,
+      "mean_scan_spend": 16.1,
+      "mean_bid_spend": 37.99
+    }
+  },
+  "lineups": [
+    {
+      "lineup": [
+        "heavy_extractor",
+        "safe_hauler",
+        "scanner_heavy"
+      ],
+      "games": 200,
+      "policies": {
+        "safe_hauler": {
+          "win_rate": 0.445,
+          "seats": 200,
+          "ci95": [
+            0.3778,
+            0.51427
+          ]
+        },
+        "scanner_heavy": {
+          "win_rate": 0.35,
+          "seats": 200,
+          "ci95": [
+            0.28729,
+            0.41837
+          ]
+        },
+        "heavy_extractor": {
+          "win_rate": 0.205,
+          "seats": 200,
+          "ci95": [
+            0.15486,
+            0.26626
+          ]
+        }
+      }
+    },
+    {
+      "lineup": [
+        "heavy_extractor",
+        "safe_hauler",
+        "pure_trader"
+      ],
+      "games": 200,
+      "policies": {
+        "pure_trader": {
+          "win_rate": 0.17,
+          "seats": 200,
+          "ci95": [
+            0.12428,
+            0.22816
+          ]
+        },
+        "heavy_extractor": {
+          "win_rate": 0.3,
+          "seats": 200,
+          "ci95": [
+            0.24075,
+            0.36679
+          ]
+        },
+        "safe_hauler": {
+          "win_rate": 0.53,
+          "seats": 200,
+          "ci95": [
+            0.46092,
+            0.59795
+          ]
+        }
+      }
+    },
+    {
+      "lineup": [
+        "heavy_extractor",
+        "safe_hauler",
+        "random"
+      ],
+      "games": 200,
+      "policies": {
+        "safe_hauler": {
+          "win_rate": 0.4425,
+          "seats": 200,
+          "ci95": [
+            0.37539,
+            0.51178
+          ]
+        },
+        "random": {
+          "win_rate": 0.2375,
+          "seats": 200,
+          "ci95": [
+            0.18382,
+            0.30108
+          ]
+        },
+        "heavy_extractor": {
+          "win_rate": 0.32,
+          "seats": 200,
+          "ci95": [
+            0.25926,
+            0.38752
+          ]
+        }
+      }
+    },
+    {
+      "lineup": [
+        "heavy_extractor",
+        "scanner_heavy",
+        "pure_trader"
+      ],
+      "games": 200,
+      "policies": {
+        "scanner_heavy": {
+          "win_rate": 0.53,
+          "seats": 200,
+          "ci95": [
+            0.46092,
+            0.59795
+          ]
+        },
+        "heavy_extractor": {
+          "win_rate": 0.26,
+          "seats": 200,
+          "ci95": [
+            0.20414,
+            0.32491
+          ]
+        },
+        "pure_trader": {
+          "win_rate": 0.21,
+          "seats": 200,
+          "ci95": [
+            0.15928,
+            0.27165
+          ]
+        }
+      }
+    },
+    {
+      "lineup": [
+        "heavy_extractor",
+        "scanner_heavy",
+        "random"
+      ],
+      "games": 200,
+      "policies": {
+        "random": {
+          "win_rate": 0.195,
+          "seats": 200,
+          "ci95": [
+            0.14605,
+            0.25544
+          ]
+        },
+        "heavy_extractor": {
+          "win_rate": 0.37,
+          "seats": 200,
+          "ci95": [
+            0.30612,
+            0.43877
+          ]
+        },
+        "scanner_heavy": {
+          "win_rate": 0.435,
+          "seats": 200,
+          "ci95": [
+            0.36816,
+            0.50429
+          ]
+        }
+      }
+    },
+    {
+      "lineup": [
+        "heavy_extractor",
+        "pure_trader",
+        "random"
+      ],
+      "games": 200,
+      "policies": {
+        "heavy_extractor": {
+          "win_rate": 0.83,
+          "seats": 200,
+          "ci95": [
+            0.77184,
+            0.87572
+          ]
+        },
+        "random": {
+          "win_rate": 0.115,
+          "seats": 200,
+          "ci95": [
+            0.07786,
+            0.16665
+          ]
+        },
+        "pure_trader": {
+          "win_rate": 0.055,
+          "seats": 200,
+          "ci95": [
+            0.03099,
+            0.09579
+          ]
+        }
+      }
+    },
+    {
+      "lineup": [
+        "safe_hauler",
+        "scanner_heavy",
+        "pure_trader"
+      ],
+      "games": 200,
+      "policies": {
+        "safe_hauler": {
+          "win_rate": 0.405,
+          "seats": 200,
+          "ci95": [
+            0.33938,
+            0.4742
+          ]
+        },
+        "pure_trader": {
+          "win_rate": 0.16,
+          "seats": 200,
+          "ci95": [
+            0.11567,
+            0.21714
+          ]
+        },
+        "scanner_heavy": {
+          "win_rate": 0.435,
+          "seats": 200,
+          "ci95": [
+            0.36816,
+            0.50429
+          ]
+        }
+      }
+    },
+    {
+      "lineup": [
+        "safe_hauler",
+        "scanner_heavy",
+        "random"
+      ],
+      "games": 200,
+      "policies": {
+        "scanner_heavy": {
+          "win_rate": 0.37,
+          "seats": 200,
+          "ci95": [
+            0.30612,
+            0.43877
+          ]
+        },
+        "safe_hauler": {
+          "win_rate": 0.45,
+          "seats": 200,
+          "ci95": [
+            0.38264,
+            0.51925
+          ]
+        },
+        "random": {
+          "win_rate": 0.18,
+          "seats": 200,
+          "ci95": [
+            0.13295,
+            0.23912
+          ]
+        }
+      }
+    },
+    {
+      "lineup": [
+        "safe_hauler",
+        "pure_trader",
+        "random"
+      ],
+      "games": 200,
+      "policies": {
+        "random": {
+          "win_rate": 0.135,
+          "seats": 200,
+          "ci95": [
+            0.09447,
+            0.18929
+          ]
+        },
+        "safe_hauler": {
+          "win_rate": 0.845,
+          "seats": 200,
+          "ci95": [
+            0.78839,
+            0.8886
+          ]
+        },
+        "pure_trader": {
+          "win_rate": 0.02,
+          "seats": 200,
+          "ci95": [
+            0.0078,
+            0.05029
+          ]
+        }
+      }
+    },
+    {
+      "lineup": [
+        "scanner_heavy",
+        "pure_trader",
+        "random"
+      ],
+      "games": 200,
+      "policies": {
+        "scanner_heavy": {
+          "win_rate": 0.86,
+          "seats": 200,
+          "ci95": [
+            0.8051,
+            0.90133
+          ]
+        },
+        "pure_trader": {
+          "win_rate": 0.03,
+          "seats": 200,
+          "ci95": [
+            0.01382,
+            0.0639
+          ]
+        },
+        "random": {
+          "win_rate": 0.11,
+          "seats": 200,
+          "ci95": [
+            0.07377,
+            0.16093
+          ]
+        }
+      }
+    }
+  ],
+  "metrics": {
+    "score_min": 447.59,
+    "score_median": 1392.41,
+    "score_p95": 2026.27,
+    "score_p99": 2340.45,
+    "score_max": 2792.61,
+    "winner_median": 1689.46,
+    "winner_p05": 1288.36,
+    "winner_p95": 2238.35,
+    "maxwealth_any_round": 2792.61,
+    "recovery_deployments": 0,
+    "mincredits": 0.0,
+    "max_price_multiple": 3.3142,
+    "scans": 14305,
+    "mean_winner_objective_fraction": 0.04405,
+    "seat_win_rates": [
+      0.3435,
+      0.33275,
+      0.32375
+    ],
+    "objective_win_rates": [
+      0.35695,
+      0.34341,
+      0.35469,
+      0.27815
+    ]
+  }
+}

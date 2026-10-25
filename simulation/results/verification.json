@@ -1,0 +1,18 @@
+{
+  "status": "primary benchmark passed; composition-specific balance limitations remain",
+  "matches": 35800,
+  "tests": 32,
+  "model_sha256": "9272b9fa17a84c2e1630431fc6e8790e2b32dcc659318904500797ada5726fdc",
+  "highest_primary_win_rate": 0.30825,
+  "highest_distinct_lineup_rate": 0.3535,
+  "highest_duplicate_lineup_rate": 1.0,
+  "primary_policy_rates": {
+    "scanner_heavy": 0.26925,
+    "safe_hauler": 0.30825,
+    "heavy_extractor": 0.18263,
+    "pure_trader": 0.25275,
+    "random": 0.23713
+  },
+  "mean_winning_objective_share": 0.04023,
+  "median_winning_score": 1661.46
+}
