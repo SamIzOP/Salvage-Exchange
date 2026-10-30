@@ -159,6 +159,56 @@ class GameTests(unittest.TestCase):
             self.service.preview(self.code, self.a, {'commodity_orders': [1e308, 0, 0]}, 1)
         self.assertEqual(self.service.view(self.code, self.a), initial)
 
+    def test_own_settlement_report_reconciles_and_stays_private(self):
+        self.planning()
+        with self.service.store.transaction() as db:
+            room = self.service.store.load(db, self.code)
+            room['hazards'] = [1., 0., 1.]
+            room['events'] = [0., 0., 0.]
+            room['members'][0]['player']['inventory'] = [3., 0., 0.]
+            room['members'][0]['player']['drones'][1]['insured'] = True
+            self.service.store.save(db, room)
+        self.command(self.a, 'lock', plan={'allocation': {'0': 0, '1': 1}, 'bids': [0, 15, 0],
+                                           'commodity_orders': [-2, 1, 0], 'stock_orders': [2, 0, 0]})
+        result = self.command(self.b, 'lock', plan={'allocation': {'0': 1}})
+        log = result['history'][0]
+        self.assertNotIn('reports', result['players'][0])
+        self.assertNotIn("'trades'", str(result['players']))
+        mine = self.service.view(self.code, self.a)['you']['reports']
+        self.assertEqual(len(mine), 1)
+        report = mine[0]
+        self.assertEqual(report['round'], 1)
+        self.assertEqual(report['deployment'], 12)
+        self.assertEqual(report['fuel'], 3)
+        self.assertEqual(report['bid_paid'], 15)
+        self.assertEqual(len(report['trades']), 3)
+        cents = lambda x: round(x * 100)
+        flow = report['trade_cash'] - report['deployment'] - report['bid_paid']
+        self.assertEqual(cents(report['after']['credits'] - report['before']['credits']), cents(flow))
+        public = [k for k in report['before'] if k != 'objective']
+        self.assertEqual(sum(cents(report['after'][k]) - cents(report['before'][k]) for k in public), cents(log['deltas'][0]))
+        fleet = report['after']['fleet'] - report['before']['fleet']
+        self.assertLessEqual(abs(cents(fleet) - cents(-report['depreciation'] + report['disabling'])), 1)
+        # Seat 0 won the Cruiser bid, the Cruiser was severe, and its insured drone was repaired.
+        self.assertEqual(report['hits'], [dict(drone=1, sector=1, repaired=True)])
+        self.assertEqual(report['disabling'], 0)
+        rival = self.service.view(self.code, self.b)['you']['reports'][0]
+        self.assertEqual((rival['bid_paid'], rival['trades'], rival['hits']), (0, [], []))
+
+    def test_report_splits_uninsured_disablement_from_depreciation(self):
+        self.planning()
+        with self.service.store.transaction() as db:
+            room = self.service.store.load(db, self.code)
+            room['hazards'] = [0., 1., 1.]
+            self.service.store.save(db, room)
+        self.command(self.a, 'lock', plan={'allocation': {'0': 0}})
+        self.command(self.b, 'lock', plan={})
+        report = self.service.view(self.code, self.a)['you']['reports'][0]
+        self.assertEqual(report['hits'], [dict(drone=0, sector=0, repaired=False)])
+        self.assertEqual(report['depreciation'], 62.4)
+        self.assertEqual(report['disabling'], -171.6)
+        self.assertEqual(round(report['after']['fleet'] - report['before']['fleet'], 2), -234)
+
     def test_market_audit_records_rounding_and_clipping(self):
         from server.game import price_audit
         self.assertEqual(price_audit(6.02, .3, 1., 100.), dict(raw_return=.3, capped_return=.25,

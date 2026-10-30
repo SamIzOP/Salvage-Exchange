@@ -1,0 +1,123 @@
+{
+ "code": "C5TGWX",
+ "results": [
+  {
+   "round": 1,
+   "orion": {
+    "delta": 108.53,
+    "parts": 5,
+    "hits": 0,
+    "contracts": 0
+   },
+   "nova": {
+    "delta": 78.06,
+    "parts": 5,
+    "hits": 0,
+    "contracts": 0
+   }
+  },
+  {
+   "round": 2,
+   "orion": {
+    "delta": 116.36,
+    "parts": 5,
+    "hits": 0,
+    "contracts": 0
+   },
+   "nova": {
+    "delta": 75.51,
+    "parts": 5,
+    "hits": 0,
+    "contracts": 0
+   }
+  },
+  {
+   "round": 3,
+   "orion": {
+    "delta": 72.99,
+    "parts": 5,
+    "hits": 0,
+    "contracts": 1
+   },
+   "nova": {
+    "delta": 104.08,
+    "parts": 5,
+    "hits": 0,
+    "contracts": 1
+   }
+  },
+  {
+   "round": 4,
+   "orion": {
+    "delta": 81.31,
+    "parts": 5,
+    "hits": 0,
+    "contracts": 0
+   },
+   "nova": {
+    "delta": 146.71,
+    "parts": 5,
+    "hits": 0,
+    "contracts": 0
+   }
+  },
+  {
+   "round": 5,
+   "orion": {
+    "delta": 89.88,
+    "parts": 5,
+    "hits": 0,
+    "contracts": 0
+   },
+   "nova": {
+    "delta": -84.66,
+    "parts": 5,
+    "hits": 1,
+    "contracts": 0
+   }
+  },
+  {
+   "round": 6,
+   "orion": {
+    "delta": -57.95,
+    "parts": 5,
+    "hits": 1,
+    "contracts": 0
+   },
+   "nova": {
+    "delta": 108.21,
+    "parts": 5,
+    "hits": 0,
+    "contracts": 0
+   }
+  }
+ ],
+ "final": [
+  {
+   "name": "Orion Salvage",
+   "networth": 1507.12,
+   "objective": "Tech Pioneer",
+   "breakdown": {
+    "credits": 491.31,
+    "stocks": 0,
+    "salvage": 579.88,
+    "contracts": 165,
+    "fleet": 150.93,
+    "objective": 120
+   }
+  },
+  {
+   "name": "Nova Works",
+   "networth": 1622.82,
+   "objective": "Market Shark",
+   "breakdown": {
+    "credits": 413.28,
+    "stocks": 0,
+    "salvage": 823.06,
+    "contracts": 145,
+    "fleet": 241.48,
+    "objective": 0
+   }
+  }
+ ]
+}

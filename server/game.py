@@ -124,7 +124,8 @@ class GameService:
         p = player(m)
         own = {k: asdict(p)[k] for k in ['credits', 'fuel', 'drones', 'inventory', 'shares', 'extracted', 'contracts', 'scanner']}
         own.update(name=m['name'], seat=seat, ready=m['ready'], locked=m['locked'], plan=m['plan'],
-                   scans=m['scans'], objective=OBJECTIVES[p.objective] if room['round'] else None,
+                   scans=m['scans'], reports=m.get('reports', []),
+                   objective=OBJECTIVES[p.objective] if room['round'] else None,
                    breakdown=e.breakdown(p, room['prices'], room['stocks'], RULES),
                    recovery=e.recovery_eligible(p, room['prices'], room['stocks'], RULES))
         result = dict(code=room['code'], phase=room['phase'], round=room['round'], version=room['version'],
@@ -240,20 +241,58 @@ class GameService:
         players = [player(m) for m in room['members']]
         plans = [plan(m['plan']) for m in room['members']]
         before = [e.breakdown(p, room['prices'], room['stocks'], RULES) for p in players]
+        fleets = [[asdict(d) for d in p.drones] for p in players]
+        contracts = [list(p.contracts) for p in players]
         prices, stocks, log = e.settle(players, plans, room['prices'], room['stocks'], room['demand'], room['hazards'], room['events'], RNG, RULES)
         log.update(round=room['round'], opening_prices=room['prices'], opening_stocks=room['stocks'],
                    prices=prices, stocks=stocks, demand=room['demand'], plans=[asdict(p) for p in plans], scores=[], deltas=[])
         log['commodity_audit'] = [price_audit(room['prices'][j], sum(log['commodity_terms'][j]), RULES.base[j]/4, RULES.base[j]*4) for j in range(3)]
         log['stock_audit'] = [price_audit(room['stocks'][j], sum(log['stock_terms'][j]['components']), 25, 400) for j in range(3)]
-        for m, p, old in zip(room['members'], players, before):
+        for seat, (m, p, old) in enumerate(zip(room['members'], players, before)):
             m['player'] = asdict(p)
             current = e.breakdown(p, prices, stocks, RULES)
             public = {k: v for k, v in current.items() if k != 'objective'}
             log['scores'].append(public)
             log['deltas'].append(e.money(sum(public.values()) - sum(v for k, v in old.items() if k != 'objective')))
+            m.setdefault('reports', []).append(self.report(seat, plans[seat], old, current, fleets[seat], contracts[seat], p, log))
             m.update(public_score=e.money(sum(public.values())), public_fleet=len(p.drones), ready=False, locked=False)
         room.update(prices=prices, stocks=stocks, phase='finished' if room['round'] == 6 else 'upgrade')
         room['history'].append(log)
+
+    @staticmethod
+    def report(seat, pl, before, after, fleet, contracts, p, log):
+        """The owner's own settlement accounting, recorded for the reveal and never projected to rivals.
+
+        Everything here restates what settlement already did; it changes no balances.
+        """
+        trades = []
+        for kind, orders, quotes in (('cargo', pl.commodity_orders, log['opening_prices']),
+                                     ('shares', pl.stock_orders, log['opening_stocks'])):
+            for j, q in enumerate(orders):
+                if q:
+                    notional = e.money(abs(q) * quotes[j])
+                    cash = -e.money(q * quotes[j] * (1 + RULES.fee)) if q > 0 else e.money(-q * quotes[j] * (1 - RULES.fee))
+                    trades.append(dict(kind=kind, asset=j, quantity=q, price=quotes[j], notional=notional,
+                                       fee=e.money(abs(abs(cash) - notional)), cash=cash))
+        normal = [(d, s) for d, s in pl.allocation.items() if d != -1]
+        insured = {d['id'] for d in fleet if d['insured']}
+        hits = []
+        for j in range(3):
+            ids = [d for d, s in normal if s == j]
+            if log['hazards'][j] == 0 and ids and log['access'][j] in (None, seat):
+                hits.append(dict(drone=min(ids), sector=j, repaired=min(ids) in insured))
+        # Split the fleet score change into book depreciation and disabled-status changes, both on score basis.
+        weight = lambda disabled: .25 if disabled else 1.
+        later = {d.id: d for d in p.drones}
+        depreciation = sum(weight(d['disabled']) * (d['value'] - later[d['id']].value) for d in fleet)
+        disabling = sum((weight(later[d['id']].disabled) - weight(d['disabled'])) * later[d['id']].value for d in fleet)
+        return dict(round=log['round'], before=before, after=after, trades=trades,
+                    trade_cash=e.money(sum(t['cash'] for t in trades)),
+                    deployment=e.money(RULES.deploy_cost * len(normal)),
+                    fuel=sum(RULES.fuel_use[s] for _, s in normal),
+                    bid_paid=sum(pl.bids[j] for j in range(3) if log['access'][j] == seat),
+                    hits=hits, contracts=[j for j in range(3) if p.contracts[j] and not contracts[j]],
+                    depreciation=e.money(depreciation), disabling=e.money(disabling))
 
     def preview(self, code, key, raw, rival_factor):
         try:

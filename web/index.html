@@ -2,18 +2,21 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#0a1118">
-  <meta name="description" content="Crack the wreck. Play the market. A simultaneous multiplayer salvage and trading game.">
-  <title>Salvage Exchange — Mission Control</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="theme-color" content="#05080f">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="Crack the wreck. Play the market. A simultaneous multiplayer salvage and trading game for 2–4 crews.">
+  <title>Salvage Exchange</title>
   <link rel="icon" href="/mark.svg" type="image/svg+xml">
+  <link rel="preload" href="/fonts/inter-latin-wght.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/styles.css">
   <script type="module" src="/app.js"></script>
 </head>
 <body>
-  <a class="skip" href="#main">Skip to mission</a>
-  <div id="app"><main class="boot"><span class="brand-mark">SX</span><p>Establishing uplink…</p></main></div>
+  <a class="skip" href="#main">Skip to main content</a>
+  <div id="app"><main class="boot"><p>Loading…</p></main></div>
   <div id="notice" role="status" aria-live="polite"></div>
-  <dialog id="dialog" aria-labelledby="dialog-title"><button class="dialog-close" aria-label="Close dialog">×</button><div id="dialog-content"></div></dialog>
+  <div id="announcer" class="sr-only" aria-live="polite"></div>
+  <dialog id="dialog" aria-labelledby="dialog-title"><button type="button" class="dialog-close btn-icon" aria-label="Close dialog"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button><div id="dialog-content"></div></dialog>
 </body>
 </html>

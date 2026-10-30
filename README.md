@@ -2,7 +2,7 @@
 
 Crack the wreck. Play the market. A server-authoritative browser game for **2–4 players over six rounds**, with private plans, finite salvage reserves, commodity and stock markets, and persistent room-code lobbies.
 
-**Step 3 implementation is on `codex/multiplayer-build`. Step 4's complete two-player browser test and Step 5 deployment are pending. No public URL exists yet.**
+**Step 3 implementation is on `codex/multiplayer-build`. The UI polish pass in [docs/UI_POLISH_REPORT.md](docs/UI_POLISH_REPORT.md) builds on it. Step 4 sections C–F and Step 5 deployment are pending. No public URL exists yet.**
 
 ![Planning screen](docs/screenshots/step3-planning.png)
 
@@ -38,7 +38,7 @@ The app serves `dist/` if present, otherwise `web/`. Rebuild after frontend edit
 
 ## How to play
 
-Read public demand and hazard odds, optionally buy private scans and fuel, then acknowledge briefing. Secretly allocate drones, bid for extraction, place signed market orders and request delivery contracts. Everyone locks before trades, hazards, salvage and market prices resolve together. Inspect the reveal, upgrade, and acknowledge to continue. After six rounds, credits, shares, cargo, contracts, depreciated fleet and your secret objective determine the winner. Contracts award score, not cash. Sabotage, short selling and loans remain future expansions.
+Read public demand and hazard odds, optionally buy private scans and fuel, then acknowledge briefing. Secretly send drones, bid for extraction, choose Buy / Sell / Hold market orders and request delivery contracts, then review and lock. Everyone locks before trades, hazards, salvage and market prices resolve together. Inspect the reveal, upgrade, and acknowledge to continue. After six rounds, credits, shares, cargo, contracts, depreciated fleet and your secret objective determine the winner. Contracts award score, not cash. Sabotage, short selling and loans remain future expansions.
 
 ## Configuration
 
@@ -59,12 +59,14 @@ Use the virtual environment's Python (`.venv\Scripts\python.exe` on Windows; `.v
 ```sh
 python simulation/test_economy.py
 python -m unittest discover -s tests -v
-node --test tests/client.test.mjs
+node --test tests/client.test.mjs tests/model.test.mjs
 node scripts/build.mjs
 ```
 
 The original 32 economy checks and new server/HTTP/preview/persistence/concurrency/replay/client regressions are separate from a full browser match. Replay tests regenerate all saved 2/3/4-player fixtures without editing them. See [build report](docs/STEP3_BUILD_REPORT.md).
 
+
+Browser checks drive the real UI with Playwright against a local server: a six-round two-identity match, interaction states, a layout sweep and a four-crew room. See [tests/browser/README.md](tests/browser/README.md).
 ## Deployment prerequisites — Step 5 only
 
 - Finish Step 4 first.

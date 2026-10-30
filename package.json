@@ -3,6 +3,6 @@
   "version": "0.3.0",
   "private": true,
   "type": "module",
-  "scripts": {"build": "node scripts/build.mjs", "check": "node --check web/app.js", "test": "node --test tests/client.test.mjs"},
+  "scripts": {"build": "node scripts/build.mjs", "check": "node --check web/app.js && node --check web/model.js && node --check web/art.js", "test": "node --test tests/client.test.mjs tests/model.test.mjs"},
   "engines": {"node": ">=22"}
 }
