@@ -1,6 +1,8 @@
 import {isCurrentResponse, snapshotCommand} from './session.js';
 import * as M from './model.js';
 import {art, icon, drone, mark} from './art.js';
+import {createCoach} from './coach.js';
+import {steps as GUIDE, RIVAL} from './tutorial.js';
 
 const {SECTORS, GOODS, COMPANIES, TICKERS, CONTRACTS, COMPONENTS, money, units, pct, signedMoney, cents} = M;
 const SHORT = ['Belt', 'Cruiser', 'Rift'];
@@ -19,13 +21,30 @@ const list = names => names.length < 2 ? names.join('') : `${names.slice(0, -1).
 let state = null, session = null, draft = M.emptyDraft(), preview = null, previewStatus = 'idle', previewError = '', rivalFactor = 1;
 let previewTimer, previewRequest = 0, busy = false, busyId = '', online = true, pending = null, pendingScope = '', sessionGeneration = 0;
 let view = 'ops', menuOpen = false, timelineOpen = false, fuelQty = '1', flash = null, entryMode = 'create', landingNotice = '';
-let seq = {round: 0, playing: false, timer: 0}, dialogReturn = null, polling = false;
+let seq = {round: 0, playing: false, timer: 0}, dialogReturn = null, polling = false, practice = null, shownWorth = null;
 const openKeys = new Set();
 const regionKeys = new WeakMap();
+
+// The guide only runs inside a practice match, on the operations view.
+const coach = createCoach({steps: GUIDE, context: guideContext, announce, reduceMotion, onAction: guideAction,
+  load: () => session?.practice ? read(`sx-guide-${session.code}`) : null,
+  save: value => { if (session?.practice) save(`sx-guide-${session.code}`, value); }});
+
+function guideContext() {
+  if (!state || !session?.practice || view !== 'ops') return null;
+  return {state, draft, ev: evaluation(), seqPlaying: seq.playing, reviewing: $('#dialog').open && !!$('#lock-plan')};
+}
+
+function guideAction(id) {
+  if (id === 'leave') leave();
+  else if (id === 'keep') toast(`The practice continues. Good luck against ${RIVAL}.`);
+  else if (id === 'ended') toast('Guide closed. Reopen it any time from Menu → Guide.');
+}
 
 // ---------- transport and session ----------
 
 async function api(path, body, key = session?.key) {
+  if (practice && key && practice.owns(key)) { const data = await practice.api(path, body, key); online = true; return data; }
   const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 12000);
   try {
     const response = await fetch(`/api${path}`, {method: body === undefined ? 'GET' : 'POST',
@@ -47,6 +66,7 @@ function accept(next, force = false, requested = session) {
   if (!isCurrentResponse(state, next, requested, session)) return false;
   const prev = state;
   const changed = !prev || prev.code !== next.code || prev.round !== next.round || prev.phase !== next.phase;
+  if (!prev || prev.code !== next.code) shownWorth = null;
   state = next;
   if (changed) {
     preview = null; previewRequest++; previewStatus = 'idle';
@@ -122,7 +142,7 @@ const FRIENDLY = {
 };
 const friendly = message => FRIENDLY[message] || message;
 
-function draftChanged() { save(draftKey(), draft); updateLive(); schedulePreview(); }
+function draftChanged() { save(draftKey(), draft); updateLive(); coach.sync(); schedulePreview(); }
 
 function schedulePreview() {
   clearTimeout(previewTimer);
@@ -160,6 +180,45 @@ function setFlash(scope, text) {
   flash = {scope, text};
   render();
   if (!$(`[data-error-scope="${scope}"]`)) announce(text);
+}
+
+// ---------- motion ----------
+
+// Counts a number from its old value to its new one. Values settle exactly on the final figure.
+const tweens = new WeakMap();
+function tweenText(el, from, to, format, {duration = 450, delay = 0} = {}) {
+  if (!el || reduceMotion()) return;
+  const token = {}, start = performance.now() + delay;
+  tweens.set(el, token);
+  el.textContent = format(from);
+  const frame = now => {
+    if (tweens.get(el) !== token || !el.isConnected) return;
+    const t = Math.min(1, Math.max(0, (now - start) / duration));
+    el.textContent = format(t >= 1 ? to : from + (to - from) * (1 - (1 - t) ** 3));
+    if (t < 1) requestAnimationFrame(frame); else tweens.delete(el);
+  };
+  requestAnimationFrame(frame);
+}
+function finishTween(selector) {
+  for (const el of $$(selector)) { tweens.delete(el); el.textContent = signedMoney(Number(el.dataset.final)); }
+}
+
+function tweenWorth() {
+  const value = total(state.you.breakdown), from = shownWorth;
+  shownWorth = value;
+  if (from === null || cents(from) === cents(value) || reduceMotion()) return;
+  for (const el of $$('[data-tween="worth"]')) {
+    tweenText(el, from, value, money);
+    el.classList.remove('gain', 'loss'); void el.offsetWidth; el.classList.add(value > from ? 'gain' : 'loss');
+  }
+}
+
+function tweenHeadline() {
+  if (!seq.playing || seq.tweened === seq.round) return;
+  const el = $('.seq-live .big-n');
+  if (!el) return;
+  seq.tweened = seq.round;
+  tweenText(el, 0, Number(el.dataset.final), signedMoney, {duration: 520, delay: 120});
 }
 
 // ---------- region rendering ----------
@@ -211,6 +270,9 @@ function render() {
   renderMain();
   renderStatus();
   updateLive();
+  tweenWorth();
+  tweenHeadline();
+  coach.sync();
 }
 
 function ensureShell() {
@@ -219,7 +281,9 @@ function ensureShell() {
     <header id="hdr" class="topbar"></header>
     <div class="layout"><main id="main" tabindex="-1"><div id="status"></div><div id="regions"></div></main>
     <aside id="rail" class="rail" aria-label="Your corporation and crews"></aside></div>
-    <footer class="foot"><span>Salvage Exchange · frozen economy v0.2 · alpha</span><span>Estimates are estimates. Rival plans stay sealed until every crew locks.</span></footer>
+    <footer class="foot">${session?.practice
+      ? `<span>Practice match · runs only in this browser</span><span>${RIVAL} is a training rival. Nothing here reaches a server or a real room.</span>`
+      : '<span>Salvage Exchange · frozen economy v0.2 · alpha</span><span>Estimates are estimates. Rival plans stay sealed until every crew locks.</span>'}</footer>
     <section id="dock" class="dock" aria-label="Your position"></section></div>`;
   const dock = $('#dock'), top = $('#hdr'), root = document.documentElement.style;
   new ResizeObserver(() => root.setProperty('--dock-h', `${dock.offsetHeight}px`)).observe(dock);
@@ -231,6 +295,8 @@ function renderMain() {
   if (host.dataset.ids !== ids) {
     host.innerHTML = regions.map(r => `<div class="region" id="r-${r.id}"></div>`).join('');
     host.dataset.ids = ids;
+    // A new phase or view slides in once; later patches inside it stay still.
+    if (!reduceMotion()) { host.classList.add('enter'); clearTimeout(renderMain.timer); renderMain.timer = setTimeout(() => host.classList.remove('enter'), 900); }
   }
   for (const r of regions) patch($(`#r-${r.id}`), r.key, r.html);
 }
@@ -276,8 +342,9 @@ function headerHtml() {
   const round = s.phase === 'lobby' ? 'Lobby' : `Round ${s.round} of 6`;
   return `<div class="topbar-inner">
     <div class="brand">${mark()}<span>Salvage Exchange</span></div>
-    <div class="room"><span class="room-label">Room</span><span class="room-code">${s.code}</span>
-      ${btn(`${icon('copy')}<span class="sr-only">Copy room code ${s.code.split('').join(' ')}</span>`, 'copy-code', {cls: 'btn-icon', id: 'copy-code'})}</div>
+    ${session?.practice ? `<div class="room practice-tag"><span class="room-code">Practice</span><span class="room-label">vs ${RIVAL}</span></div>`
+      : `<div class="room"><span class="room-label">Room</span><span class="room-code">${s.code}</span>
+      ${btn(`${icon('copy')}<span class="sr-only">Copy room code ${s.code.split('').join(' ')}</span>`, 'copy-code', {cls: 'btn-icon', id: 'copy-code'})}</div>`}
     <div class="phase"><span class="round-label">${round}</span>
       <button type="button" class="phase-now" id="phase-toggle" data-action="timeline" aria-expanded="${timelineOpen}" aria-controls="timeline">
         <span>${round}</span><b>${M.phaseLabel(s.phase)}</b>${icon('chevron', 'chev')}</button>
@@ -294,9 +361,11 @@ function headerHtml() {
         <div id="menu" class="menu ${menuOpen ? 'open' : ''}">
           ${btn(`${icon('ops')}Operations`, 'view', {cls: 'menu-item only-narrow', id: 'menu-ops', attrs: `data-view="ops" aria-pressed="${view === 'ops'}"`})}
           ${btn(`${icon('ledger')}Ledger`, 'view', {cls: 'menu-item only-narrow', id: 'menu-ledger', attrs: `data-view="ledger" aria-pressed="${view === 'ledger'}"`})}
+          ${session?.practice ? btn(`${icon('info')}Guide`, 'guide', {cls: 'menu-item', id: 'menu-guide'}) : ''}
           ${btn(`${icon('help')}How to play`, 'help', {cls: 'menu-item', id: 'menu-help'})}
-          ${btn(`${icon('key')}Your rejoin key`, 'key', {cls: 'menu-item', id: 'menu-key'})}
-          ${btn(`${icon('leave')}Back to start screen`, 'home', {cls: 'menu-item', id: 'menu-home'})}
+          ${session?.practice ? btn(`${icon('replay')}Restart practice`, 'practice', {cls: 'menu-item', id: 'menu-restart'})
+            : btn(`${icon('key')}Your rejoin key`, 'key', {cls: 'menu-item', id: 'menu-key'})}
+          ${btn(`${icon('leave')}${session?.practice ? 'Leave practice' : 'Back to start screen'}`, 'home', {cls: 'menu-item', id: 'menu-home'})}
         </div></div>
     </div></div>`;
 }
@@ -310,7 +379,7 @@ function worthHtml() {
     <progress max="${state.rules.objective_cap}" value="${b.objective}" aria-label="Objective bonus: ${money(b.objective)} of ${money(state.rules.objective_cap)} cr"></progress></div>` : '';
   return `<section class="rail-card worth" aria-labelledby="worth-title">
     <h2 id="worth-title" class="rail-title">Your net worth <span class="note">includes your private objective</span></h2>
-    <p class="worth-total num">${money(total(b))}<small>cr</small></p>
+    <p class="worth-total num"><span data-tween="worth">${money(total(b))}</span><small>cr</small></p>
     <dl class="worth-list">${COMPONENTS.map(([k, label]) => `<div class="wl-${k}"><dt>${label}<span class="hint">${{credits: 'spendable', contracts: 'score', fleet: 'book value', objective: 'private', stocks: 'at market', salvage: 'at market'}[k]}</span></dt><dd class="num">${money(b[k])}</dd></div>`).join('')}</dl>
     ${objective}
     ${btn('What counts?', 'worth', {cls: 'btn-link', id: 'worth-rail'})}
@@ -381,7 +450,7 @@ function dockHtml() {
     else action = btn('New game', 'home', {cls: 'btn-primary', id: 'home-dock'});
   }
   return `<div class="dock-inner"><div class="dock-row">${stats}<div class="dock-action">${action}</div></div>
-    <dl class="dock-worth"><div class="dw-total"><dt>Net worth</dt><dd class="num">${money(total(b))}</dd></div>
+    <dl class="dock-worth"><div class="dw-total"><dt>Net worth</dt><dd class="num" data-tween="worth">${money(total(b))}</dd></div>
     ${COMPONENTS.map(([k, label]) => `<div class="dw-${k}"><dt>${label}</dt><dd class="num">${money(b[k])}</dd></div>`).join('')}
     <div class="dw-more">${btn(`${icon('info')}<span>Info</span>`, 'worth', {cls: 'btn-ghost', id: 'worth-dock', attrs: 'aria-label="Explain net worth"'})}</div></dl></div>`;
 }
@@ -767,7 +836,7 @@ function startSequenceIfNew() {
   save(key, true);
   seq = {round, playing: true, timer: setTimeout(() => endSequence(), 3700)};
 }
-function endSequence() { seq.playing = false; clearTimeout(seq.timer); $('.seq-live')?.classList.remove('playing'); setNote(''); }
+function endSequence() { seq.playing = false; clearTimeout(seq.timer); $('.seq-live')?.classList.remove('playing'); setNote(''); finishTween('.seq-live .big-n'); coach.sync(); }
 function setNote(text) { const n = $('#seq-note'); if (n) n.textContent = text; }
 
 function sectorStory(log, report, j) {
@@ -842,7 +911,7 @@ function roundHtml(log, report, live) {
   scoreBody += `<p class="hint">All crews’ public change: ${s.players.map((p, i) => `${esc(p.name)} ${signedMoney(log.deltas[i])}`).join(' · ')}.</p>`;
 
   const headline = `<div class="headline ${tone(pubDelta)}"><p class="kicker">Your result</p>
-    <p class="big num">${signedMoney(pubDelta)}<small>cr public value</small></p>
+    <p class="big num"><span class="big-n" data-final="${pubDelta}">${signedMoney(pubDelta)}</span><small>cr public value</small></p>
     ${report ? `<p>${cents(objDelta) ? `Private objective ${signedMoney(objDelta)} cr. ` : ''}Net worth now ${money(total(report.after))} cr${live ? ' after settlement' : ''}, including your objective.</p>` : ''}
     ${highlights.length ? `<ul class="highlights">${highlights.slice(0, 4).map(h => `<li>${h}</li>`).join('')}</ul>` : ''}</div>`;
 
@@ -924,7 +993,9 @@ function finalHtml() {
     <p class="hint">Public value after each round, from the recorded reveals. These exclude objectives, which count only in the final scores above.</p>
     ${historyChart()}
     ${disclosure('final-table', 'Round-by-round values', historyTable())}</section>
-  <div class="next-step"><div><b>Play again?</b><p>Start or join a new room from the start screen. There are no upgrades after round 6.</p></div>${btn('Back to start screen', 'home', {cls: 'btn-primary', id: 'new-game'})}</div>`;
+  ${session?.practice
+    ? `<div class="next-step"><div><b>Practice complete</b><p>You’ve played a full match. Start a real room and invite 1–3 friends, or practise again.</p></div><div class="button-row">${btn('Practise again', 'practice', {id: 'practice-again'})}${btn('Back to start screen', 'home', {cls: 'btn-primary', id: 'new-game'})}</div></div>`
+    : `<div class="next-step"><div><b>Play again?</b><p>Start or join a new room from the start screen. There are no upgrades after round 6.</p></div>${btn('Back to start screen', 'home', {cls: 'btn-primary', id: 'new-game'})}</div>`}`;
 }
 
 const publicAfter = (log, i) => M.sum(Object.values(log.scores[i]));
@@ -981,10 +1052,14 @@ function modal(title, html, {sheet = false} = {}) {
   $('#dialog-content').innerHTML = `<h2 id="dialog-title">${title}</h2>${html}`;
   d.classList.toggle('sheet', sheet);
   if (!d.open) d.showModal();
+  coach.sync();
 }
 
 function help() {
   modal('How to play', `<p class="lede">Crack the wreck. Play the market. Finish round 6 with the highest net worth.</p>
+    <div class="help-practice">${session?.practice
+      ? `<p>The guide walks you through rounds 1 and 2 of this practice match.</p>${btn(`${icon('info')}Open the guide`, 'guide', {id: 'help-guide'})}`
+      : `<p><b>Prefer to learn by doing?</b> Play a guided practice round against a training rival. It runs only in this browser${state ? '; this room stays under “Your rooms”' : ''}.</p>${btn('Play the guided practice', 'practice', {cls: 'btn-primary', id: 'help-practice'})}`}</div>
     <h3>A round</h3><ol class="help-steps"><li><b>Briefing.</b> Read demand and hazard odds. Buy fuel and up to two private scans. Everyone marks ready.</li>
       <li><b>Planning.</b> Secretly send drones, bid for access, place buy and sell orders and request deliveries. Then lock; locking is final for the round.</li>
       <li><b>Settlement.</b> Runs the moment the last crew locks: opening-price trades, access, hazards and salvage, cargo prices, share prices, contracts, insurance and depreciation.</li>
@@ -1024,11 +1099,12 @@ function renderLanding() {
     <main id="main" class="landing-main" tabindex="-1">
       <section class="landing-intro"><p class="kicker">Multiplayer alpha · 2–4 crews · 6 rounds</p>
         <h1>Crack the wreck.<br><span>Play the market.</span></h1>
-        <p class="lede">Send salvage drones into three hazardous sites, bid against rival crews for access, and trade what comes back. Every crew plans in secret; every haul moves the same market.</p></section>
+        <p class="lede">Send salvage drones into three hazardous sites, bid against rival crews for access, and trade what comes back. Every crew plans in secret; every haul moves the same market.</p>
+        ${practiceCta()}</section>
 
       <section class="entry" aria-labelledby="entry-title"><h2 id="entry-title">Start or join a match</h2>
         ${landingNotice ? `<div class="banner error" role="alert">${icon('alert')}<div><p>${esc(landingNotice)}</p></div></div>` : ''}
-        <div class="seg seg-wide" role="group" aria-label="Create or join">
+        <div class="seg seg-wide" role="group" aria-label="Create or join" data-mode="${entryMode}">
           <button type="button" class="seg-btn" id="mode-create" data-action="mode" data-mode="create" aria-pressed="${entryMode === 'create'}">Create a room</button>
           <button type="button" class="seg-btn" id="mode-join" data-action="mode" data-mode="join" aria-pressed="${entryMode === 'join'}">Join a room</button></div>
         <form id="entry-form" novalidate>
@@ -1049,9 +1125,19 @@ function renderLanding() {
     <footer class="foot"><span>Frozen economy v0.2 · alpha</span><span>Known balance limits are listed under How to play.</span></footer></div>`;
 }
 
+function practiceCta() {
+  const saved = practiceSaved(), going = saved && saved.phase !== 'finished';
+  return `<div class="practice-cta"><div class="pc-art" aria-hidden="true">${drone()}</div><div class="pc-text"><b>New here? Learn by playing.</b>
+    <p>A guided practice round against a training rival. About five minutes, and it runs only in this browser.</p></div>
+    <div class="button-row">${going
+      ? `${btn(`Continue practice · round ${saved.round}`, 'practice-continue', {cls: 'btn-accent', id: 'practice-continue'})}${btn('Start over', 'practice', {cls: 'btn-ghost', id: 'practice-new'})}`
+      : btn('Start guided practice', 'practice', {cls: 'btn-accent', id: 'practice-start'})}</div></div>`;
+}
+
 function updateLanding() {
   $('#code-field')?.toggleAttribute('hidden', entryMode !== 'join');
   for (const m of ['create', 'join']) $(`#mode-${m}`)?.setAttribute('aria-pressed', String(entryMode === m));
+  const seg = $('.seg-wide'); if (seg) seg.dataset.mode = entryMode;
   const submit = $('#entry-submit');
   if (submit) { submit.textContent = entryMode === 'join' ? 'Join room' : 'Create room'; submit.disabled = busy; }
 }
@@ -1074,10 +1160,53 @@ function entryError(err, code) {
   return ['err-entry', m];
 }
 
+// ---------- practice ----------
+
+function practiceSaved() {
+  const meta = read('sx-practice'), room = meta && read('sx-practice-store')?.rooms?.[meta.code];
+  return room ? {code: meta.code, key: meta.key, round: room.round, phase: room.phase} : null;
+}
+
+async function loadPractice() {
+  if (!practice) {
+    practice = await import('./practice.js');
+    practice.onChange(() => poll());
+  }
+  return practice;
+}
+
+async function startPractice() {
+  if (busy) return;
+  const name = ($('#entry-name')?.value || '').trim().slice(0, 24) || 'Rookie Salvage';
+  busy = true;
+  try {
+    let P;
+    try { P = await loadPractice(); }
+    catch { toast('Practice needs the built client. Run “npm run build”, then reload.'); return; }
+    const old = read('sx-practice');
+    if (old) forget(`sx-guide-${old.code}`);
+    if (state) closeRoom();
+    else if ($('#dialog').open) $('#dialog').close();
+    const {code, key} = await P.create(name);
+    busy = false;
+    await resume(code, key, true);
+    coach.start(0);
+  } catch (err) { toast(`Couldn’t start the practice: ${err.message}`); if (!state) render(); }
+  finally { busy = false; }
+}
+
+async function continuePractice() {
+  const saved = practiceSaved();
+  if (!saved) { toast('No practice match on this browser yet.'); return; }
+  try { await resume(saved.code, saved.key, true); coach.resume(); }
+  catch { toast('Practice needs the built client. Run “npm run build”, then reload.'); }
+}
+
 // ---------- session lifecycle ----------
 
-async function resume(code, key) {
-  const requested = {code, key, generation: ++sessionGeneration};
+async function resume(code, key, inPractice = false) {
+  if (inPractice) (await loadPractice()).wake();
+  const requested = {code, key, generation: ++sessionGeneration, ...(inPractice ? {practice: true} : {})};
   session = requested;
   const receipt = read(`sx-pending-${code}`);
   pending = receipt?.owner === key ? receipt.command : null;
@@ -1090,11 +1219,15 @@ async function resume(code, key) {
   if (pending && !busy) await sendPending();
 }
 
-function leave() {
-  state = null; session = null; pending = null; flash = null; view = 'ops'; menuOpen = false; timelineOpen = false;
-  forget('sx-active'); clearTimeout(seq.timer);
+function closeRoom() {
+  state = null; session = null; pending = null; flash = null; view = 'ops'; menuOpen = false; timelineOpen = false; shownWorth = null;
+  forget('sx-active'); clearTimeout(seq.timer); coach.detach();
   $('#app').innerHTML = '';
   if ($('#dialog').open) $('#dialog').close();
+}
+
+function leave() {
+  closeRoom();
   render();
   $('#main')?.focus();
 }
@@ -1154,6 +1287,15 @@ document.addEventListener('submit', async event => {
 document.addEventListener('click', async event => {
   if (menuOpen && !event.target.closest('.menu-wrap')) { menuOpen = false; render(); }
   if (timelineOpen && !event.target.closest('.phase')) { timelineOpen = false; render(); }
+  const jump = event.target.closest('.jump a[href^="#"]');
+  if (jump) {
+    const section = document.getElementById(jump.getAttribute('href').slice(1)), heading = section?.querySelector('h2');
+    if (!section) return;
+    event.preventDefault();
+    section.scrollIntoView({behavior: reduceMotion() ? 'auto' : 'smooth', block: 'start'});
+    if (heading) { heading.tabIndex = -1; heading.focus({preventScroll: true}); }
+    return;
+  }
   const b = event.target.closest('[data-action]');
   if (!b || b.disabled) return;
   const a = b.dataset.action, d = b.dataset;
@@ -1162,6 +1304,9 @@ document.addEventListener('click', async event => {
   try {
     switch (a) {
       case 'help': help(); break;
+      case 'practice': await startPractice(); break;
+      case 'practice-continue': await continuePractice(); break;
+      case 'guide': if ($('#dialog').open) $('#dialog').close(); if (!coach.reopen()) toast('The guide covers rounds 1 and 2. Choose “Restart practice” in the menu to see it again.'); break;
       case 'key': keyDialog(); break;
       case 'worth': worthDialog(); break;
       case 'review': reviewDialog(); break;
@@ -1214,7 +1359,8 @@ document.addEventListener('click', async event => {
         const el = $('.seq-live'); if (!el) break;
         if (reduceMotion()) { announce('Reduced motion is on, so the result is shown without playback.'); break; }
         clearTimeout(seq.timer); el.classList.remove('playing'); void el.offsetWidth; el.classList.add('playing');
-        seq.playing = true; setNote('Replaying the settlement that already ran. Nothing is recalculated.');
+        seq.playing = true; seq.tweened = 0; setNote('Replaying the settlement that already ran. Nothing is recalculated.');
+        tweenHeadline(); coach.sync();
         seq.timer = setTimeout(endSequence, 3700); break; }
     }
   } catch (err) { setFlash('general', err.message); }
@@ -1252,13 +1398,16 @@ addEventListener('resize', () => { if (narrow() !== wasNarrow) { wasNarrow = nar
 
 $('.dialog-close').addEventListener('click', () => $('#dialog').close());
 $('#dialog').addEventListener('click', e => { if (e.target === $('#dialog')) $('#dialog').close(); });
+// The guide waits for the dialog's entrance to finish before pointing inside it.
+for (const type of ['transitionend', 'animationend']) $('#dialog').addEventListener(type, e => { if (e.target === $('#dialog')) coach.sync(); });
 $('#dialog').addEventListener('close', () => {
   const el = dialogReturn && document.getElementById(dialogReturn);
   if (el) el.focus();
   dialogReturn = null;
+  coach.sync();
 });
 
-setInterval(async () => {
+async function poll() {
   if (!session || busy || polling) return;
   const requested = {...session};
   polling = true;
@@ -1268,16 +1417,18 @@ setInterval(async () => {
   } catch {
     if (requested.generation === session?.generation && online) { online = false; render(); }
   } finally { polling = false; }
-}, 2000);
+}
+setInterval(poll, 2000);
 
 const active = read('sx-active');
 if (!active) render();
 else {
   $('#app').innerHTML = '<main class="boot" id="main"><p>Reopening your room…</p></main>';
-  resume(active.code, active.key).catch(err => {
+  resume(active.code, active.key, !!active.practice).then(() => { if (active.practice) coach.resume(); }).catch(err => {
     state = null; session = null;
-    landingNotice = `Couldn’t reopen room ${active.code}: ${err.status === 404 ? 'it no longer exists on this server' : err.status === 401 ? 'the key saved in this browser doesn’t open it, or the room was removed' : 'the server didn’t answer'}. ${err.status ? '' : 'Try again from “Your rooms”.'}`;
-    if (err.status) forget('sx-active');
+    landingNotice = active.practice ? 'Couldn’t reopen your practice match. Start a new one below.'
+      : `Couldn’t reopen room ${active.code}: ${err.status === 404 ? 'it no longer exists on this server' : err.status === 401 ? 'the key saved in this browser doesn’t open it, or the room was removed' : 'the server didn’t answer'}. ${err.status ? '' : 'Try again from “Your rooms”.'}`;
+    if (err.status || active.practice) forget('sx-active');
     $('#app').innerHTML = ''; render();
   });
 }

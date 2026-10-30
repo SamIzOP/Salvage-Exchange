@@ -309,7 +309,7 @@ progress::-moz-progress-bar { background: var(--text-2); border-radius: 3px; }
 .chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 6px 12px 6px 9px; border: 1px solid var(--control); border-radius: 999px; background: transparent; color: var(--text-2); font: 500 14px var(--sans); cursor: pointer; transition: background var(--fast) var(--ease), color var(--fast) var(--ease), border-color var(--fast) var(--ease); }
 .chip:hover:not(:disabled) { border-color: #7586a5; color: var(--text); }
-.chip[aria-pressed="true"] { background: var(--text); border-color: var(--text); color: var(--bg); font-weight: 600; }
+.chip[aria-pressed="true"], .chip[aria-pressed="true"]:hover:not(:disabled) { background: var(--text); border-color: var(--text); color: var(--bg); font-weight: 600; }
 .chip small { font-size: 12px; opacity: .85; }
 .chip:disabled { border-style: dotted; opacity: .6; cursor: not-allowed; }
 .sector-sum { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
@@ -553,8 +553,13 @@ progress::-moz-progress-bar { background: var(--text-2); border-radius: 3px; }
 
 /* ---------- dialog, toast, dock ---------- */
 dialog { width: calc(100% - 32px); max-width: 640px; max-height: calc(100dvh - 48px); padding: 24px; background: var(--raised); color: var(--text); border: 1px solid var(--line-2); border-radius: 10px; box-shadow: 0 24px 64px rgba(0, 0, 0, .6); }
-dialog[open] { animation: rise var(--panel) var(--ease) both; }
-dialog::backdrop { background: rgba(2, 4, 8, .72); }
+/* Opens and closes with a short fade and lift; browsers without @starting-style simply skip it. */
+dialog { opacity: 0; transform: translateY(10px); transition: opacity var(--panel) var(--ease), transform var(--panel) var(--ease), overlay var(--panel) allow-discrete, display var(--panel) allow-discrete; }
+dialog[open] { opacity: 1; transform: none; }
+@starting-style { dialog[open] { opacity: 0; transform: translateY(10px); } }
+dialog::backdrop { background: rgba(2, 4, 8, 0); transition: background var(--panel) var(--ease), overlay var(--panel) allow-discrete, display var(--panel) allow-discrete; }
+dialog[open]::backdrop { background: rgba(2, 4, 8, .72); }
+@starting-style { dialog[open]::backdrop { background: rgba(2, 4, 8, 0); } }
 #dialog-title { margin: 0 44px 16px 0; font-size: 20px; }
 .dialog-close { position: absolute; top: 12px; right: 12px; }
 dialog h3 { margin: 20px 0 6px; font-size: 15px; }
@@ -575,6 +580,114 @@ dialog .lede { font-size: 16px; }
 #notice.visible { opacity: 1; transform: translate(-50%, 0); }
 
 .dock { display: none; }
+
+
+/* ---------- motion ----------
+   Feedback 120ms, panels 200ms, emphasis 320ms. Only opacity and transform animate, nothing loops,
+   and every effect collapses under reduced motion. */
+@keyframes fade { from { opacity: 0; } }
+@keyframes pop { 0% { opacity: 0; transform: scale(.6); } 70% { opacity: 1; transform: scale(1.08); } 100% { transform: none; } }
+@keyframes launch { 0% { transform: none; } 45% { transform: translate(3px, -4px) rotate(-10deg); } 100% { transform: none; } }
+@keyframes gain { from { color: var(--pos); } }
+@keyframes loss { from { color: var(--neg); } }
+
+/* A new phase or view settles in, section by section. */
+#regions.enter > .region > * { animation: rise var(--emph) var(--ease) both; }
+#regions.enter > .region > :nth-child(2) { animation-delay: 40ms; }
+#regions.enter > .region > :nth-child(3) { animation-delay: 80ms; }
+#regions.enter > .region > :nth-child(4) { animation-delay: 120ms; }
+#regions.enter > .region > :nth-child(5) { animation-delay: 160ms; }
+#regions.enter > .region > :nth-child(n+6) { animation-delay: 200ms; }
+#regions.enter > .region + .region > * { animation-delay: 120ms; }
+
+.landing-intro, .entry { animation: rise var(--emph) var(--ease) both; }
+.entry { animation-delay: 60ms; }
+.practice-cta { animation: rise var(--emph) var(--ease) 120ms both; }
+.manifest li { animation: rise var(--emph) var(--ease) both; }
+.manifest li:nth-child(1) { animation-delay: 160ms; }
+.manifest li:nth-child(2) { animation-delay: 200ms; }
+.manifest li:nth-child(3) { animation-delay: 240ms; }
+
+/* Net worth flashes the direction it moved, then counts to the exact figure. */
+[data-tween].gain { animation: gain 900ms var(--ease); }
+[data-tween].loss { animation: loss 900ms var(--ease); }
+
+/* Segmented controls slide a thumb to the chosen side. */
+.order .seg, .seg-wide { position: relative; isolation: isolate; }
+.order .seg { display: inline-grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.order .seg::before, .seg-wide::before { content: ''; position: absolute; z-index: -1; top: 2px; bottom: 2px; left: 2px; border-radius: var(--r1); background: var(--text); transition: transform var(--panel) var(--ease); }
+.order .seg::before { width: calc((100% - 8px) / 3); }
+.order[data-side="sell"] .seg::before { transform: translateX(calc(100% + 2px)); }
+.order[data-side="hold"] .seg::before { transform: translateX(calc(200% + 4px)); }
+.seg-wide::before { width: calc((100% - 6px) / 2); }
+.seg-wide[data-mode="join"]::before { transform: translateX(calc(100% + 2px)); }
+.order .seg-btn[aria-pressed="true"], .seg-wide .seg-btn[aria-pressed="true"],
+.order .seg-btn[aria-pressed="true"]:hover, .seg-wide .seg-btn[aria-pressed="true"]:hover { background: transparent; color: var(--bg); }
+
+/* Drones lift off when you send them. */
+.chip[aria-pressed="true"] .drone, .fleet-item.assigned .drone { animation: launch var(--emph) var(--ease); }
+.fleet-item { transition: border-color var(--fast) var(--ease), background var(--panel) var(--ease); }
+.fleet-item.assigned { background: var(--raised); }
+.sector { transition: border-color var(--panel) var(--ease), background var(--panel) var(--ease), box-shadow var(--panel) var(--ease); }
+.sector.active { box-shadow: 0 0 0 1px color-mix(in srgb, var(--sx) 28%, transparent); }
+.next-step.locked b .icon { animation: pop 420ms var(--ease) 120ms both; }
+.contract { transition: border-color var(--fast) var(--ease), background var(--panel) var(--ease); }
+
+/* ---------- guided practice ---------- */
+.btn-accent { background: var(--accent-soft); border-color: rgba(92, 225, 255, .45); color: var(--accent); }
+.btn-accent:hover { background: rgba(92, 225, 255, .18); border-color: var(--accent); color: var(--accent); }
+.practice-cta { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; max-width: 640px; margin: 28px 0 0; padding: 16px 18px; background: var(--surface); border: 1px solid #1f4a5c; border-radius: var(--r3); }
+.pc-art { display: grid; place-items: center; width: 40px; height: 40px; flex: none; border-radius: 50%; background: var(--accent-soft); color: var(--accent); }
+.pc-art .drone { width: 22px; height: 22px; }
+.pc-text { flex: 1; min-width: 200px; }
+.pc-text b { display: block; font-size: 16px; }
+.pc-text p { margin: 2px 0 0; color: var(--text-2); font-size: 14px; }
+.practice-cta:has(#practice-continue) .button-row { flex-basis: 100%; padding-left: 56px; }
+.help-practice { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 0 0 8px; padding: 12px 14px; background: var(--sunken); border: 1px solid var(--line); border-radius: var(--r3); }
+.help-practice p { flex: 1; min-width: 220px; margin: 0; }
+.practice-tag { gap: 8px; padding: 4px 10px; min-height: 40px; background: var(--accent-soft); border-color: #1f4a5c; }
+.practice-tag .room-code { color: var(--accent); font-family: var(--sans); letter-spacing: .02em; }
+
+/* The guide never blocks the page: only its card and pill take pointer input. */
+.coach { position: fixed; inset: 0; z-index: 35; pointer-events: none; }
+.coach-scrim { position: fixed; inset: 0; background: rgba(2, 4, 8, .5); animation: fade var(--panel) var(--ease) both; }
+.coach-ring { position: fixed; top: 0; left: 0; border-radius: 10px; box-shadow: 0 0 0 2px var(--accent), 0 0 0 200vmax rgba(2, 4, 8, .45); transition: transform var(--emph) var(--ease), width var(--emph) var(--ease), height var(--emph) var(--ease); }
+.coach.acting .coach-ring { box-shadow: 0 0 0 2px var(--accent), 0 0 22px rgba(92, 225, 255, .35), 0 0 0 200vmax rgba(2, 4, 8, .32); }
+.coach.min .coach-ring { box-shadow: 0 0 0 2px var(--accent); }
+.coach-ring.ping::after { content: ''; position: absolute; inset: -2px; border: 2px solid var(--accent); border-radius: inherit; opacity: 0; animation: ping 800ms var(--ease) 2; }
+@keyframes ping { from { opacity: .9; transform: none; } to { opacity: 0; transform: scale(1.08); } }
+.coach.instant .coach-ring, .coach.instant .coach-card { transition: none; }
+.coach-card { position: fixed; top: 0; left: 0; width: min(360px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: auto; pointer-events: auto; background: var(--raised); border: 1px solid #2b5a6e; border-radius: 10px; box-shadow: 0 18px 48px rgba(0, 0, 0, .6); outline: none; transition: transform var(--emph) var(--ease); }
+.coach-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.coach-bar { height: 3px; background: var(--line); border-radius: 10px 10px 0 0; overflow: hidden; }
+.coach-bar i { display: block; height: 100%; background: var(--accent); transform: scaleX(var(--p, 0)); transform-origin: left; transition: transform var(--emph) var(--ease); }
+.coach-inner { padding: 12px 16px 12px; }
+.coach-inner.enter { animation: coach-in var(--panel) var(--ease) both; }
+@keyframes coach-in { from { opacity: 0; transform: translateY(6px); } }
+.coach-head { display: flex; align-items: center; gap: 2px; margin: 0 0 6px; }
+.coach-count { margin-right: auto; color: var(--accent); font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.coach-icon { display: grid; place-items: center; width: 32px; height: 32px; margin: -6px 0; border: 0; border-radius: var(--r2); background: transparent; color: var(--muted); cursor: pointer; }
+.coach-icon:last-child { margin-right: -8px; }
+.coach-icon:hover { background: var(--raised-2); color: var(--text); }
+.coach-icon svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.coach-card h2 { margin: 0 0 6px; font-size: 17px; }
+.coach-body p { margin: 0 0 6px; color: var(--text-2); font-size: 14px; }
+.coach-body b { color: var(--text); }
+.coach-body .coach-warn { padding: 6px 10px; background: #191407; border: 1px solid #5c4a1e; border-radius: var(--r2); color: var(--warn); }
+.coach-do { display: flex; align-items: center; gap: 8px; margin: 8px 0 0; color: var(--accent); font-size: 14px; font-weight: 600; }
+.coach-do span { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--accent); }
+.coach-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin: 12px 0 0; }
+.coach-actions .btn { min-height: 36px; }
+.coach-pill { display: none; position: fixed; left: 12px; bottom: calc(var(--dock-h) + 12px); align-items: center; gap: 8px; min-height: 40px; padding: 8px 14px; pointer-events: auto; background: var(--raised); border: 1px solid #2b5a6e; border-radius: 999px; box-shadow: 0 10px 28px rgba(0, 0, 0, .5); color: var(--accent); font: 600 14px var(--sans); cursor: pointer; animation: rise var(--panel) var(--ease) both; }
+.coach-pill span { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.coach.min .coach-card, .coach.min .coach-scrim { display: none; }
+.coach.min .coach-pill { display: inline-flex; }
+dialog .coach-pill { bottom: 12px; }
+/* The header menu and timeline sit under the guide's layer, so the guide steps aside while they're open. */
+body:has(.menu.open, .timeline.open) .coach { display: none; }
+/* Notices stack just above the guide card while it sits on the bottom edge. */
+body:has(.coach.edge-bottom:not([hidden])) #notice { bottom: calc(var(--dock-h) + var(--coach-h, 0px) + 12px); }
+dialog .coach-body p { font-size: 14px; }
 
 /* ---------- responsive ---------- */
 @media (max-width: 1240px) {
@@ -649,6 +762,9 @@ dialog .lede { font-size: 16px; }
   .jump a { display: inline-flex; align-items: center; min-height: 44px; padding: 6px 14px; }
   .disclosure.small > summary { min-height: 44px; }
   .btn-link { min-height: 0; }
+  .coach-actions .btn, .coach-pill { min-height: 44px; }
+  .coach-icon { width: 44px; height: 44px; margin: -10px 0; }
+  .coach-icon:last-child { margin-right: -12px; }
 }
 
 @media (max-width: 640px) {
@@ -690,6 +806,11 @@ dialog .lede { font-size: 16px; }
   dialog { width: 100%; max-width: none; max-height: 92dvh; margin: auto 0 0; padding: 20px 16px calc(16px + env(safe-area-inset-bottom)); border-radius: 12px 12px 0 0; }
   .dialog-actions { margin: 20px -16px 0; padding: 12px 16px; bottom: calc(-16px - env(safe-area-inset-bottom)); }
   .entry { padding: 18px; }
+  .practice-cta { margin-top: 20px; padding: 14px; }
+  .practice-cta .button-row, .practice-cta:has(#practice-continue) .button-row { padding-left: 0; }
+  .practice-cta .button-row, .practice-cta .btn { width: 100%; }
+  .coach-inner { padding: 10px 14px; }
+  .coach-card h2 { font-size: 16px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

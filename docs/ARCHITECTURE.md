@@ -36,6 +36,10 @@ Drafts are saved per room, seat and round. Sealed commands snapshot their payloa
 
 The page is split into regions (header, status, phase content, rail, phone dock). Each region re-renders only when its own key changes, so polls that change another crew's readiness leave inputs, caret, open disclosures and scroll untouched; draft-derived values update in place. Buy / Sell / Hold controls are translated to the server's signed orders by `web/model.js`, which mirrors the frozen validation rules to explain problems beside each control. The server still validates every lock. All six score components stay visible: in the sticky desktop rail and in the single fixed phone dock.
 
+## Guided practice
+
+`web/practice.js` runs a practice room in the browser with the Workers engine, which the build copies into `dist/engine/`. A local store mirrors the room to `localStorage`, and the room is played against a scripted training rival. `api()` answers practice-key requests from that module with the HTTP API's routes and errors, so no request leaves the browser. `web/coach.js` is the non-blocking spotlight guide; `web/tutorial.js` holds its steps, each tied to a round and phase and reading its numbers from live state. Real rooms and the server are untouched. See `docs/GUIDED_PRACTICE.md`.
+
 ## API
 
 | Method / path | Purpose |

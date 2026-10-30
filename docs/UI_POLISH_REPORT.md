@@ -39,7 +39,7 @@ Reused unchanged: the session guards in `web/session.js`, owner-scoped pending r
 
 ## Preserved
 
-The frozen v0.2 rules and every simulation file are unchanged, and the 32 economy tests pass. Plans, scans and objectives stay server-held. There is still no short selling, loan, sabotage, bot, timeout, undo-after-lock or rematch. Every player still acknowledges the reveal before the game advances. Known balance limitations are unchanged and are still stated in How to play.
+The frozen v0.2 rules and every simulation file are unchanged, and the 32 economy tests pass. Plans, scans and objectives stay server-held. There is still no short selling, loan, sabotage, bot, timeout, undo-after-lock or rematch in real rooms. A later follow-up added a training rival only to the offline guided practice; see `GUIDED_PRACTICE.md`. Every player still acknowledges the reveal before the game advances. Known balance limitations are unchanged and are still stated in How to play.
 
 ## What was verified
 

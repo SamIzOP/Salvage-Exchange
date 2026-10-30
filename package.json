@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "check": "node --check web/app.js && node --check web/model.js && node --check web/art.js && node --check worker/src/index.js",
-    "test": "node --test tests/client.test.mjs tests/model.test.mjs",
+    "check": "node --check web/app.js && node --check web/model.js && node --check web/art.js && node --check web/coach.js && node --check web/tutorial.js && node --check web/practice.js && node --check worker/src/index.js",
+    "test": "node --test tests/client.test.mjs tests/model.test.mjs tests/practice.test.mjs",
     "test:worker": "node --test tests/worker/economy.test.mjs tests/worker/server.test.mjs",
     "worker:dev": "node scripts/build.mjs && wrangler d1 migrations apply salvage-exchange --local && wrangler dev",
     "worker:deploy": "node scripts/build.mjs && wrangler d1 migrations apply salvage-exchange --remote && wrangler deploy"

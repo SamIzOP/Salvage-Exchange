@@ -27,6 +27,8 @@ Rooms use the same JSON format and tables. A room created by one implementation 
    - `worker/src/index.js` as the entry point.
 
    `wrangler.jsonc` declares all of this.
+
+   `dist/` also contains `engine/`, a copy of the Worker's game modules that the build makes for the in-browser guided practice. It's served as ordinary static files, and practice never calls the API.
 3. **On ChatGPT Sites:** import this repository or project and point it at `wrangler.jsonc`. If Sites expects a different project layout, keep the same entry point and the two binding names. I couldn't check the exact import steps, because OpenAI's help pages weren't reachable from this environment.
 4. **On plain Cloudflare Workers:** run `npx wrangler d1 create salvage-exchange`, put the returned ID into `wrangler.jsonc`, then `npm run worker:deploy`.
 
