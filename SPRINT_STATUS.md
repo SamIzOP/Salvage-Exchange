@@ -10,6 +10,8 @@ The user requires exactly one process step per turn, followed by a stop until th
 
 UI polish (separate instruction, `docs/UI_POLISH_MASTER_PROMPT.md` and `docs/UI_CRITIQUE.md`) — implemented on `claude/dazzling-tesla-8nky8e`, based on `codex/clinical-ui-design` at `59aafee`. Frontend rewritten around a planning decision loop, truthful staged reveal and phone composition; one private, read-only settlement report added to the owner's projection. Frozen economy files unchanged. Browser-verified in Chromium only; see `docs/UI_POLISH_REPORT.md` for exact coverage and gaps. This does not complete Step 4 sections C–F.
 
+ChatGPT Sites port (separate instruction): `worker/` runs the same game on Workers + D1, proven identical to the Python server by recorded-game parity tests, verified in Cloudflare's local Workers runtime and not yet deployed. See `docs/SITES_DEPLOYMENT.md`. Step 5 (DEPLOY) is still not started.
+
 Known simulation limits: a lone extractor strongly counters three pure traders; pure trading is weak in two-player matches; Logistics Empire performs worse with these bots; automatic two-scan purchasing is not reliably profitable; bounded final-mark trading incentives remain. The report gives exact results and sample sizes. These limitations must not be omitted from later assessments.
 
 Current source of truth: ECONOMY.md and simulation/rules-v0.2.json. Reproduce frozen runs with simulation/reproduce.py and verify/report with simulation/report.py. Earlier candidate results and parameter sweeps are historical, not final evidence.

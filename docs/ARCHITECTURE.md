@@ -49,6 +49,10 @@ The page is split into regions (header, status, phase content, rail, phone dock)
 
 Commands: start, ready, scan, purchase, lock. Purchases: fuel, drone, repair, insurance, scanner, retire. There are no endpoints for setting prices, dice, balances or outcomes; sabotage, short selling and loans remain excluded.
 
+## Workers + D1 port
+
+`worker/` is a second implementation of this server for Workers-style hosts such as ChatGPT Sites, which can't run Python. It ports `simulation/economy.py`, `server/game.py`, `server/models.py` and `server/app.py` line for line, and serves the same browser client. D1 has no interactive transactions, so each write is one atomic batch conditioned on the revision the writer read (`rev` inside the room JSON); a lost race re-reads and retries, which keeps settlement exactly-once. Presence heartbeats live in a separate `presence` table, so polling never rewrites the room. Rate limits are per isolate and only best effort. `tests/worker/` proves both implementations produce identical results; see `docs/SITES_DEPLOYMENT.md`.
+
 ## Verification scope
 
 Implementation checks are not Step 4's full two-session browser test, separate-device verification or a production audit. See STEP3_BUILD_REPORT.md. No public deployment has been attempted.

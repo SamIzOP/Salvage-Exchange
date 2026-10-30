@@ -67,6 +67,13 @@ The original 32 economy checks and new server/HTTP/preview/persistence/concurren
 
 
 Browser checks drive the real UI with Playwright against a local server: a six-round two-identity match, interaction states, a layout sweep and a four-crew room. See [tests/browser/README.md](tests/browser/README.md).
+
+`npm run test:worker` checks that the Workers port below matches the Python server exactly (it runs the Python reference, so use the virtual environment's dependencies).
+
+## ChatGPT Sites and other Workers hosts
+
+ChatGPT Sites can't run the Python server, so `worker/` contains a Workers + D1 port of it that serves the same browser client. Run it locally with `npm install` then `npm run worker:dev` (http://127.0.0.1:8787). See [docs/SITES_DEPLOYMENT.md](docs/SITES_DEPLOYMENT.md) for deployment steps, differences from the Python server and how parity is verified. It is verified in Cloudflare's local Workers runtime only; it has not been deployed to ChatGPT Sites.
+
 ## Deployment prerequisites — Step 5 only
 
 - Finish Step 4 first.

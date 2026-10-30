@@ -1,23 +1,16 @@
 // Layout sweep: every phase at 375/390/768/1024/1440 and 200% zoom. Reports overflow, sub-12px text,
 // small touch targets on narrow layouts, and primary actions hidden behind the fixed dock.
-const { chromium, cmd, createRoom, openAs, BASE, PYTHON } = require('./lib.cjs');
+const { chromium, openAs, fixture } = require('./lib.cjs');
 const out = process.argv[2];
 const sizes = [[375, 812, 1], [390, 844, 1], [768, 1024, 1], [1024, 768, 1], [1440, 900, 1], [720, 450, 2, 'zoom200-1440']];
 const empty = { allocation: {}, bids: [0, 0, 0], commodity_orders: [0, 0, 0], stock_orders: [0, 0, 0], contracts: [false, false, false] };
 const busy = { allocation: { '0': 0, '1': 2 }, bids: [0, 0, 7], commodity_orders: [1, 0, 0], stock_orders: [1, 0, 0], contracts: [false, false, false] };
 
-const { execFileSync } = require('node:child_process');
-const DB = process.env.SX_DB;
-function room(phase) {
-  const out = execFileSync(PYTHON, [__dirname + '/fixture.py', DB, phase, 'Orion Salvage', 'Nova Works', 'Kestrel Deep Recovery Co']);
-  return JSON.parse(out);
-}
-
 (async () => {
   const browser = await chromium.launch();
   const phases = ['landing', 'lobby', 'briefing', 'planning', 'locked', 'reveal', 'final', 'ledger'];
   const rooms = {};
-  for (const ph of phases) if (ph !== 'landing') rooms[ph] = room(ph === 'ledger' ? 'final' : ph);
+  for (const ph of phases) if (ph !== 'landing') rooms[ph] = await fixture(ph === 'ledger' ? 'final' : ph, ['Orion Salvage', 'Nova Works', 'Kestrel Deep Recovery Co']);
   const problems = [];
   for (const [w, h, dsf, label] of sizes) {
     for (const ph of phases) {

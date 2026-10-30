@@ -11,3 +11,5 @@ dist/
 Thumbs.db
 data/
 .pytest_cache/
+.wrangler/
+.dev.vars

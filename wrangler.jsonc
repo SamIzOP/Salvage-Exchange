@@ -1,0 +1,19 @@
+// Workers + D1 deployment of Salvage Exchange, for ChatGPT Sites or any Cloudflare Workers host.
+// The browser assets come from `npm run build` (dist/); the API and game state live in worker/.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "salvage-exchange",
+  "main": "worker/src/index.js",
+  "compatibility_date": "2026-10-01",
+  "assets": {"directory": "./dist", "binding": "ASSETS", "run_worker_first": true},
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "salvage-exchange",
+      // Replace with the ID of the D1 database your host provisions (wrangler d1 create salvage-exchange).
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "worker/migrations"
+    }
+  ],
+  "observability": {"enabled": true}
+}

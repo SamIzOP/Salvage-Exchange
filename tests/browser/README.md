@@ -26,4 +26,6 @@ SX_DB=/tmp/sx-test.sqlite3 node tests/browser/record.cjs /tmp/sx-shots
 | `four.cjs` | Four separate identities fill a room at mixed viewport sizes, a fifth is refused, and one round settles. |
 | `record.cjs` | Records the reveal sequence as a WebM video. |
 
+To run the same checks against the Workers port, start `npm run worker:dev` (or `npx wrangler dev --var WRITE_LIMIT:100000 --var READ_LIMIT:1000000` for the fixture-heavy suites) and set `SX_BASE=http://127.0.0.1:8787 SX_FIXTURE=http`. HTTP fixtures can't force hidden values, so the low-fuel, disabled-drone and recovery checks are reported as skipped.
+
 The server rate-limits writes per IP. `fixture.py` builds hard-to-reach states through `GameService` directly, so repeated runs stay under that limit. All interaction under test still goes through HTTP.

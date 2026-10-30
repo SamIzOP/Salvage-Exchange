@@ -3,6 +3,18 @@
   "version": "0.3.0",
   "private": true,
   "type": "module",
-  "scripts": {"build": "node scripts/build.mjs", "check": "node --check web/app.js && node --check web/model.js && node --check web/art.js", "test": "node --test tests/client.test.mjs tests/model.test.mjs"},
-  "engines": {"node": ">=22"}
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "check": "node --check web/app.js && node --check web/model.js && node --check web/art.js && node --check worker/src/index.js",
+    "test": "node --test tests/client.test.mjs tests/model.test.mjs",
+    "test:worker": "node --test tests/worker/economy.test.mjs tests/worker/server.test.mjs",
+    "worker:dev": "node scripts/build.mjs && wrangler d1 migrations apply salvage-exchange --local && wrangler dev",
+    "worker:deploy": "node scripts/build.mjs && wrangler d1 migrations apply salvage-exchange --remote && wrangler deploy"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "wrangler": "4.156.0"
+  }
 }

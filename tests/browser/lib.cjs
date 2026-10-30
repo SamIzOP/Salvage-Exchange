@@ -67,4 +67,42 @@ async function overflow(page) {
   });
 }
 
-module.exports = { chromium, api, cmd, createRoom, openAs, newKey, overflow, BASE, SHOTS, PYTHON };
+// Builds a room in a given phase. By default fixture.py writes it straight into the local
+// Python server's database (SX_DB). With SX_FIXTURE=http it is built through the public API
+// instead, which works against any server, including the Worker; states that need forced
+// hidden values (lowfuel, disabled, recovery) are then unavailable.
+const FORCED = ['lowfuel', 'disabled', 'recovery'];
+async function fixture(phase, names = ['Orion Salvage', 'Nova Works']) {
+  if (process.env.SX_FIXTURE !== 'http') {
+    const out = require('node:child_process').execFileSync(PYTHON, [__dirname + '/fixture.py', process.env.SX_DB, phase, ...names]);
+    return JSON.parse(out);
+  }
+  if (FORCED.includes(phase)) throw new Error(`${phase} needs fixture.py`);
+  const r = await createRoom(names);
+  const [host, ...rest] = r.players;
+  if (phase === 'lobby') return r;
+  await cmd(r.code, host.key, 'start');
+  if (phase === 'briefing') return r;
+  const working = async p => (await api(`/rooms/${r.code}`, undefined, p.key)).you.drones.filter(d => !d.disabled).map(d => d.id);
+  for (let round = 1; round <= (phase === 'final' ? 6 : 1); round++) {
+    if (round > 1) for (const p of r.players) {
+      const you = (await api(`/rooms/${r.code}`, undefined, p.key)).you;
+      const q = Math.min(4, 16 - you.fuel, Math.floor(you.credits / 8));
+      if (q > 0) await cmd(r.code, p.key, 'purchase', { item: 'fuel', quantity: q });
+    }
+    for (const p of r.players) await cmd(r.code, p.key, 'ready');
+    if (phase === 'planning') return r;
+    const ids = await working(host);
+    const allocation = Object.fromEntries(ids.slice(0, 2).map((id, i) => [String(id), [0, 2][i]]));
+    await cmd(r.code, host.key, 'lock', { plan: { allocation, bids: [0, 0, ids.length > 1 ? 7 : 0] } });
+    if (phase === 'locked') return r;
+    for (const [i, p] of rest.entries()) {
+      const mine = await working(p);
+      await cmd(r.code, p.key, 'lock', { plan: { allocation: mine.length ? { [String(mine[0])]: (i + 1) % 3 } : {} } });
+    }
+    if (phase === 'final' && round < 6) for (const p of r.players) await cmd(r.code, p.key, 'ready');
+  }
+  return r;
+}
+
+module.exports = { chromium, api, cmd, createRoom, openAs, newKey, overflow, fixture, BASE, SHOTS, PYTHON };

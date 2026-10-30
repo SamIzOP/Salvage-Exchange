@@ -1,10 +1,9 @@
 // Records the reveal sequence as the rival's lock settles the round (default motion).
-const { execFileSync } = require('node:child_process');
-const { chromium, cmd, BASE, PYTHON } = require('./lib.cjs');
+const { chromium, cmd, BASE, fixture } = require('./lib.cjs');
 const out = process.argv[2];
-const r = JSON.parse(execFileSync(PYTHON, [__dirname + '/fixture.py', process.env.SX_DB, 'locked']));
 
 (async () => {
+  const r = await fixture('locked');
   const browser = await chromium.launch();
   const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, recordVideo: { dir: out, size: { width: 1280, height: 800 } } });
   const [a, b] = r.players;
