@@ -1,0 +1,24 @@
+<!doctype html><meta charset="utf-8"><title>Study B · Dispatch chart</title>
+<!-- Visual study B: the same planning state as a printed dispatch chart. -->
+<link rel="stylesheet" href="study.css">
+<body class="b">
+<header class="top"><b>Salvage Exchange</b><span>Round 1 of 6 · Planning</span><span class="cr">Credits left <b>718.00</b> · Fuel <b>3 of 8</b></span></header>
+<section class="chart" id="chart"></section>
+<div class="below">
+  <section class="market wide"><p class="kick">Orders</p><table><tbody id="mk"></tbody></table></section>
+  <aside class="commit"><p class="kick">Your plan</p><dl><dt>Reserved</dt><dd>114.00</dd><dt>Credits left</dt><dd>616.00</dd><dt>Fuel</dt><dd>3 of 8</dd><dt>Drones</dt><dd>2 sent</dd></dl><button class="primary">Review plan</button></aside>
+</div>
+<script type="module">
+import * as A from '../../../web/scene.js';
+const c = document.getElementById('chart');
+const sites = [['Crystal Belt','Alloys 24.00','1 fuel','85 / 15 / 0'],['Derelict Cruiser','Power Cores 42.00','2 fuel','65 / 25 / 10'],['Void Rift','Relic Tech 72.00','3 fuel','scan: severe']];
+const pos = [[38,30],[60,62],[84,28]];
+c.innerHTML = `<svg class="grid" viewBox="0 0 1200 420"><g class="rings"><circle cx="90" cy="300" r="180"/><circle cx="90" cy="300" r="420"/><circle cx="90" cy="300" r="700"/><circle cx="90" cy="300" r="1000"/></g>
+  <path class="leg on" d="M90 300L456 126"/><path class="leg on" d="M90 300L720 260"/><path class="leg" d="M90 300L1008 118"/></svg>
+  <div class="hub" data-x="7.5" data-y="71">DOCK<br><small>2 drones · 8 fuel</small></div>` +
+  sites.map((s,j)=>`<div class="node" data-x="${pos[j][0]}" data-y="${pos[j][1]}"><div class="disc">${A.siteArt(j,'c'+j)}</div><b>${s[0]}</b><span>${A.cargoIcon(j)} ${s[1]} · ${s[2]}</span><em>${s[3]}</em></div>`).join('') +
+  `<span class="tok" data-x="25" data-y="47">1</span><span class="tok" data-x="36" data-y="64">2</span>`;
+for (const el of c.querySelectorAll('[data-x]')) { el.style.left = el.dataset.x + '%'; el.style.top = el.dataset.y + '%'; }
+const rows = [['Alloys',0,'24.00','cargo'],['Power Cores',1,'42.00','cargo'],['Relic Tech',2,'72.00','cargo'],['Ferrum Industries',0,'100.00','share'],['Helion Energy',1,'100.00','share'],['Aether Research',2,'100.00','share']];
+document.getElementById('mk').innerHTML = rows.map(([n,j,p,k],i)=>`<tr><th>${k==='cargo'?A.cargoIcon(j):A.insignia(j)} ${n}</th><td>${p}</td><td class="seg"><span ${i==3?'class="on"':''}>Buy</span><span>Sell</span><span ${i!=3?'class="on"':''}>Hold</span></td><td>${i==3?'1 · −102.00':''}</td></tr>`).join('');
+</script>

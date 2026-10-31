@@ -38,7 +38,7 @@ The app serves `dist/` if present, otherwise `web/`. Rebuild after frontend edit
 
 ## How to play
 
-New to the game? Choose **Start guided practice** on the start screen. You play a match against a training rival, entirely in your browser, while a step-by-step guide points at each control and waits for you to use it. See [docs/GUIDED_PRACTICE.md](docs/GUIDED_PRACTICE.md).
+New to the game? Choose **Learn by playing** on the start screen. Vale, the yard dispatcher, runs four short missions against a training rival, entirely in your browser: recover your first cargo, turn it into cash, read the competition, then make your own plan. Each mission can be retried from a checkpoint. See [docs/TRAINING_MISSIONS.md](docs/TRAINING_MISSIONS.md) for the lesson specification and [docs/ART_DIRECTION.md](docs/ART_DIRECTION.md) for the visual direction.
 
 Read public demand and hazard odds, optionally buy private scans and fuel, then acknowledge briefing. Secretly send drones, bid for extraction, choose Buy / Sell / Hold market orders and request delivery contracts, then review and lock. Everyone locks before trades, hazards, salvage and market prices resolve together. Inspect the reveal, upgrade, and acknowledge to continue. After six rounds, credits, shares, cargo, contracts, depreciated fleet and your secret objective determine the winner. Contracts award score, not cash. Sabotage, short selling and loans remain future expansions.
 
@@ -68,7 +68,7 @@ node --test tests/client.test.mjs tests/model.test.mjs tests/practice.test.mjs
 The original 32 economy checks and new server/HTTP/preview/persistence/concurrency/replay/client regressions are separate from a full browser match. Replay tests regenerate all saved 2/3/4-player fixtures without editing them. See [build report](docs/STEP3_BUILD_REPORT.md).
 
 
-Browser checks drive the real UI with Playwright against a local server: a six-round two-identity match, interaction states, a layout sweep, a four-crew room and the guided practice. See [tests/browser/README.md](tests/browser/README.md).
+Browser checks drive the real UI with Playwright against a local server: a six-round two-identity match, interaction states, a layout sweep, a four-crew room and the four training missions. See [tests/browser/README.md](tests/browser/README.md).
 
 `npm run test:worker` checks that the Workers port below matches the Python server exactly (it runs the Python reference, so use the virtual environment's dependencies).
 

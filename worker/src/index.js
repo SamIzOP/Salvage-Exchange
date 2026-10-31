@@ -1,9 +1,9 @@
 // HTTP boundary and same-origin frontend for Workers-style hosts such as ChatGPT Sites.
 // Mirrors server/app.py: same routes, errors, limits and security headers.
 import RULES from '../../simulation/rules-v0.2.json';
-import {GameService, GameError} from './game.js';
+import {GameService, GameError} from '../../web/engine/game.js';
 import {D1Store} from './store.js';
-import {SchemaError, identity, command, previewInput} from './schema.js';
+import {SchemaError, identity, command, previewInput} from '../../web/engine/schema.js';
 
 const SECURITY_HEADERS = {
   'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY',

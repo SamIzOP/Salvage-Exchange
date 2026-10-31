@@ -1,0 +1,31 @@
+@font-face { font-family: Inter; src: url('../../../web/fonts/inter-latin-wght.woff2'); font-weight: 100 900; }
+@font-face { font-family: Mono; src: url('../../../web/fonts/jetbrains-mono-latin-wght.woff2'); font-weight: 100 800; }
+* { box-sizing: border-box; } body { margin: 0; width: 1200px; background: #0d0f12; color: #efe7d6; font: 14px/1.45 Inter; }
+.top { display: flex; gap: 24px; align-items: center; padding: 14px 24px; border-bottom: 1px solid #272c34; } .top .cr { margin-left: auto; color: #c9c2b3; }
+.kick { margin: 0 0 6px; font: 600 11px Mono; letter-spacing: .12em; text-transform: uppercase; color: #9a9384; }
+h2 { margin: 0 0 6px; font-size: 20px; }
+.field { position: relative; height: 420px; overflow: hidden; }
+.field .yard-art, .field .routes { position: absolute; inset: 0; width: 100%; height: 100%; }
+.routes path { fill: none; stroke: #efe7d6; stroke-width: 2; stroke-dasharray: 6 7; opacity: .7; }
+.site { position: absolute; width: 300px; transform: translate(-50%, -50%); text-align: center; }
+.site .site-illo { width: 300px; height: auto; display: block; }
+.tag { display: inline-grid; gap: 1px; margin-top: -10px; padding: 6px 12px; background: rgba(13,15,18,.82); border-top: 2px solid #d9a066; text-align: left; }
+.tag span { display: flex; align-items: center; gap: 6px; color: #c9c2b3; } .tag em { font-style: normal; font: 600 12px Mono; color: #9a9384; } .tag em.bad { color: #ff7a6b; }
+.cargo-icon { width: 16px; height: 16px; } .c0 { color: #8ec5e6; } .c1 { color: #e2734a; } .c2 { color: #b99cff; } .insignia { width: 16px; height: 16px; color: #c9c2b3; }
+.tok { position: absolute; display: grid; place-items: center; width: 30px; height: 30px; transform: translate(-50%, -50%); background: #efe7d6; color: #14161a; font: 700 15px Mono; clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%); }
+.below { display: grid; grid-template-columns: 320px 1fr 240px; gap: 0; border-top: 1px solid #272c34; }
+.below > * { padding: 18px 24px; } .below > * + * { border-left: 1px solid #272c34; }
+.panel { background: #15181d; } .fact { color: #c9c2b3; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.assign { display: flex; gap: 8px; margin: 10px 0; } .assign button, .primary { font: 600 13px Inter; padding: 8px 12px; border: 1px solid #5f6876; background: none; color: #efe7d6; border-radius: 4px; }
+.assign .on { background: #efe7d6; color: #14161a; border-color: #efe7d6; } .primary { width: 100%; margin-top: 12px; background: #d9a066; border-color: #d9a066; color: #1a1208; }
+table { width: 100%; border-collapse: collapse; } td, th { padding: 6px 8px; border-bottom: 1px solid #22262d; text-align: left; font-weight: 500; } td { font-family: Mono; font-size: 13px; }
+th { display: flex; align-items: center; gap: 8px; } .seg span { padding: 3px 8px; color: #9a9384; } .seg .on { background: #efe7d6; color: #14161a; border-radius: 3px; }
+dl { display: grid; grid-template-columns: 1fr auto; gap: 6px; margin: 0; } dt { color: #9a9384; } dd { margin: 0; font-family: Mono; }
+.b .chart { position: relative; height: 420px; background: #e9e1cf; color: #2b2620; overflow: hidden; }
+.b .grid { position: absolute; inset: 0; width: 100%; height: 100%; } .b .rings circle { fill: none; stroke: #b49a74; stroke-opacity: .35; stroke-dasharray: 3 6; }
+.b .leg { stroke: #9a7a52; stroke-width: 1.5; stroke-dasharray: 2 6; } .b .leg.on { stroke: #7a3e1d; stroke-width: 3; stroke-dasharray: none; }
+.b .node { position: absolute; transform: translate(-50%, -50%); display: grid; justify-items: center; gap: 2px; text-align: center; width: 220px; }
+.b .disc { width: 150px; height: 150px; border-radius: 50%; overflow: hidden; background: #14161a; border: 3px solid #2b2620; display: grid; place-items: center; } .b .disc svg { width: 220px; }
+.b .node span { display: flex; gap: 6px; align-items: center; font-size: 13px; } .b .node em { font: 600 12px Mono; font-style: normal; color: #7a3e1d; }
+.b .hub { position: absolute; transform: translate(-50%, -50%); width: 120px; height: 120px; border-radius: 50%; border: 3px double #2b2620; display: grid; place-content: center; text-align: center; font: 700 14px Mono; }
+.b .tok { background: #2b2620; color: #e9e1cf; } .b .below { grid-template-columns: 1fr 240px; }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {GameService, GameError} from '../../worker/src/game.js';
+import {GameService, GameError} from '../../web/engine/game.js';
 import {D1Store} from '../../worker/src/store.js';
 import {D1} from './d1.mjs';
 import {rules, runPython, diff, ReplayRng} from './parity.mjs';

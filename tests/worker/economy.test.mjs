@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import * as E from '../../worker/src/economy.js';
+import * as E from '../../web/engine/economy.js';
 import {rules, runPython, diff} from './parity.mjs';
 
 const COUNT = Number(process.env.SX_PARITY_CASES || 2500);

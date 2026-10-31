@@ -15,7 +15,7 @@ node tests/browser/match.cjs /tmp/sx-shots
 SX_DB=/tmp/sx-test.sqlite3 node tests/browser/states.cjs /tmp/sx-shots
 SX_DB=/tmp/sx-test.sqlite3 node tests/browser/sweep.cjs /tmp/sx-shots
 node tests/browser/four.cjs /tmp/sx-shots
-node tests/browser/tutorial.cjs /tmp/sx-shots
+node tests/browser/missions.cjs /tmp/sx-shots
 SX_DB=/tmp/sx-test.sqlite3 node tests/browser/record.cjs /tmp/sx-shots
 ```
 
@@ -25,7 +25,7 @@ SX_DB=/tmp/sx-test.sqlite3 node tests/browser/record.cjs /tmp/sx-shots
 | `states.cjs` | Editing while a rival locks, refresh and rejoin, a slow lock, a lost response retried without a double charge, insufficient credits and fuel, a disabled drone, the recovery drone, keyboard-only planning, connection loss, a missing room, and scan privacy. |
 | `sweep.cjs` | Every phase at 375, 390, 768, 1024 and 1440px, plus 1440px at 200% zoom. It checks horizontal overflow, text under 12px, touch targets under 44px on narrow layouts, and primary actions hidden behind the phone dock. |
 | `four.cjs` | Four separate identities fill a room at mixed viewport sizes, a fifth is refused, and one round settles. |
-| `tutorial.cjs` | Plays the guided practice as a newcomer would, at 1440 desktop, 375 touch phone with reduced motion, 768 touch tablet and 1024 keyboard-only. It follows every guide step using the control under the spotlight, then finishes the match and reloads. At each step it checks that the card stays on screen, clear of the phone dock, and doesn't cover the control to press or the start of its target. It also checks touch-target sizes, overflow and page errors, and that practice sends no API requests. Run `node scripts/build.mjs` first; practice needs the built client. |
+| `missions.cjs` | Plays the four training missions through the real controls at 1440 desktop, 375 phone (reduced motion), 390 phone and 1024 keyboard-only. It includes a failed mission 1 and its retry, a wrong mission 3 prediction, mission 4's empty tank and retry, hints, the final debrief and free practice. Then it leaves practice and reopens a live room, checking that room's own key is used. At every stage it checks overflow, touch targets and phone panel size, and that practice makes no API requests. |
 | `record.cjs` | Records the reveal sequence as a WebM video. |
 
 To run the same checks against the Workers port, start `npm run worker:dev` (or `npx wrangler dev --var WRITE_LIMIT:100000 --var READ_LIMIT:1000000` for the fixture-heavy suites) and set `SX_BASE=http://127.0.0.1:8787 SX_FIXTURE=http`. HTTP fixtures can't force hidden values, so the low-fuel, disabled-drone and recovery checks are reported as skipped.

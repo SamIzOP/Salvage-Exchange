@@ -1,8 +1,10 @@
 import {isCurrentResponse, snapshotCommand} from './session.js';
 import * as M from './model.js';
-import {art, icon, drone, mark} from './art.js';
-import {createCoach} from './coach.js';
-import {steps as GUIDE, RIVAL} from './tutorial.js';
+import {icon, drone, mark} from './art.js';
+import {siteArt, yard, cargoIcon, insignia, droneGlyph, dispatchMark, SITE_ANCHORS, DOCK_PADS, route} from './scene.js';
+import {RIVAL} from './missions.js';
+import {cue, setSound, soundOn} from './audio.js';
+import {MISSIONS, MENTOR, missionFor, accounts} from './lessons.js';
 
 const {SECTORS, GOODS, COMPANIES, TICKERS, CONTRACTS, COMPONENTS, money, units, pct, signedMoney, cents} = M;
 const SHORT = ['Belt', 'Cruiser', 'Rift'];
@@ -20,25 +22,191 @@ const list = names => names.length < 2 ? names.join('') : `${names.slice(0, -1).
 
 let state = null, session = null, draft = M.emptyDraft(), preview = null, previewStatus = 'idle', previewError = '', rivalFactor = 1;
 let previewTimer, previewRequest = 0, busy = false, busyId = '', online = true, pending = null, pendingScope = '', sessionGeneration = 0;
+let fieldView = read('sx-field-view') === 'numbers' ? 'numbers' : 'yard';
+if (read('sx-sound')) setSound(true);
 let view = 'ops', menuOpen = false, timelineOpen = false, fuelQty = '1', flash = null, entryMode = 'create', landingNotice = '';
 let seq = {round: 0, playing: false, timer: 0}, dialogReturn = null, polling = false, practice = null, shownWorth = null;
 const openKeys = new Set();
 const regionKeys = new WeakMap();
 
-// The guide only runs inside a practice match, on the operations view.
-const coach = createCoach({steps: GUIDE, context: guideContext, announce, reduceMotion, onAction: guideAction,
-  load: () => session?.practice ? read(`sx-guide-${session.code}`) : null,
-  save: value => { if (session?.practice) save(`sx-guide-${session.code}`, value); }});
+// ---------- training missions ----------
 
-function guideContext() {
-  if (!state || !session?.practice || view !== 'ops') return null;
-  return {state, draft, ev: evaluation(), seqPlaying: seq.playing, reviewing: $('#dialog').open && !!$('#lock-plan')};
+// Mission progress for the current training match, kept per match in this browser. Guidance
+// never blocks play: if anything in it fails, the panel is hidden and the game carries on.
+let missions = null;
+const missionKey = () => `sx-missions-${session.code}`;
+const freshMissions = () => ({active: 1, results: {}, flags: {}, hints: {}, hidden: false});
+function loadMissions() { missions = session?.practice && session.training ? read(missionKey()) || freshMissions() : null; }
+function saveMissions() { if (missions && session?.practice) save(missionKey(), missions); }
+const flagsFor = n => (missions.flags[n] ??= {});
+
+function missionContext(m) {
+  const s = state, y = s.you, log = s.history.find(h => h.round === m.round), report = (y.reports || []).find(r => r.round === m.round);
+  return {s, y, r: s.rules, draft, ev: evaluation(), phase: s.phase, round: s.round, seat: y.seat, flags: flagsFor(m.n), log,
+    acc: log && report ? accounts(report, log, y.seat) : null, reviewing: $('#dialog').open && !!$('#lock-plan')};
 }
 
-function guideAction(id) {
-  if (id === 'leave') leave();
-  else if (id === 'keep') toast(`The practice continues. Good luck against ${RIVAL}.`);
-  else if (id === 'ended') toast('Guide closed. Reopen it any time from Menu → Guide.');
+// Where the player is in the mission sequence, derived from the game state rather than clicks.
+function missionStage() {
+  if (!missions || !state || typeof missions.active !== 'number') return null;
+  let m = missionFor(missions.active);
+  // Moving on from a settled mission round starts the next mission; after the last, training is done.
+  while (m && state.round > m.round) {
+    const next = missionFor(m.n + 1);
+    if (!next) return {m, c: missionContext(m), kind: 'done'};
+    missions.active = next.n; saveMissions(); m = next;
+  }
+  if (!m) return null;
+  const c = missionContext(m);
+  if (m.prepared && !c.flags.loaded) return {m, c, kind: 'gate', reason: 'prepared'};
+  if (state.round < m.round) return {m, c, kind: 'wait'};
+  if (state.phase === 'briefing' && !c.y.ready && m.needs && !m.needs(c)) return {m, c, kind: 'gate', reason: 'needs'};
+  if (state.phase === 'upgrade' || state.phase === 'finished') return {m, c, kind: c.acc ? 'debrief' : 'wait'};
+  return {m, c, kind: 'play', step: m.steps.findIndex(st => !st.done(c))};
+}
+
+function missionSync() {
+  try {
+    const st = missionStage();
+    if (st && st.kind !== 'wait' && st.m.round === state.round && state.phase === 'briefing') {
+      if (practice?.checkpoint(st.m.n) && st.m.n === 4 && st.c.flags.startWorth === undefined) {
+        st.c.flags.startWorth = total(state.you.breakdown); saveMissions();
+      }
+    }
+    // The result always reflects the settled round on screen, so a retry replaces the old attempt.
+    if (st?.kind === 'debrief') {
+      const result = {complete: !!st.m.complete(st.c), change: st.c.acc.change};
+      if (JSON.stringify(result) !== JSON.stringify(missions.results[st.m.n])) { missions.results[st.m.n] = result; saveMissions(); }
+    }
+    patch($('#r-mission'), st ? JSON.stringify([st.kind, st.m.n, st.step, missions.hidden, missions.details, missions.hints[st.m.n], st.c.flags, missions.results, state.phase, state.round, state.you.ready, state.you.locked, st.kind === 'play' ? stepText(st) : '']) : 'none', () => st ? missionHtml(st) : '');
+    markTarget(st);
+  } catch (err) { console.error('Mission guidance failed; play continues.', err); $('#r-mission')?.replaceChildren(); }
+}
+
+function stepText(st) {
+  const step = st.m.steps[st.step];
+  return step ? `${step.say(st.c)}|${step.alt?.(st.c) || ''}` : '';
+}
+
+// Highlights only the control the current step is about, with its consequence beside it.
+function markTarget(st) {
+  for (const el of $$('.guide-target')) el.classList.remove('guide-target');
+  for (const el of $$('[data-callout]')) el.remove();
+  if (!st || st.kind !== 'play' || missions.hidden) return;
+  const step = st.m.steps[st.step];
+  if (!step?.target) return;
+  const el = [step.target(st.c)].flat().map(sel => $(sel)).find(x => x && x.getClientRects().length);
+  el?.classList.add('guide-target');
+  if (step.callout) {
+    const at = $(typeof step.callout.at === 'function' ? step.callout.at(st.c) : step.callout.at);
+    if (at) at.insertAdjacentHTML('afterend', `<p class="callout" data-callout>${dispatchMark()}<span><b>${step.label}.</b> ${step.callout.text(st.c)}</span></p>`);
+  }
+}
+
+function missionHtml({m, c, kind, step, reason}) {
+  const head = (kicker, title, extra = '') => `<div class="mission-bar">${dispatchMark()}<div class="mission-id"><p class="kicker">${kicker}</p><h2 id="mission-title">${title}</h2></div>${extra}</div>`;
+  const toggle = btn(missions.hidden ? 'Show guidance' : 'Hide guidance', 'mission-toggle', {cls: 'btn-sm btn-ghost', id: 'mission-toggle', attrs: `aria-expanded="${!missions.hidden}"`});
+  if (kind === 'gate') {
+    const prev = missionFor(m.n - 1);
+    const why = reason === 'prepared' ? `Mission ${m.n} starts in a fresh training yard: round ${m.round} of a prepared match, with its own sealed hazards. Your current practice match is replaced.`
+      : `${m.missing} You can start this mission from a prepared training yard, or retry the previous mission.`;
+    return `<section class="mission gate" aria-labelledby="mission-title">${head(`Mission ${m.n} of 4 · Dispatch: ${MENTOR}`, m.title)}
+      <p class="mission-say">${why}</p>
+      <div class="mission-actions">${btn(`Load the training yard`, 'mission-prepared', {cls: 'btn-primary', id: 'mission-prepared', attrs: `data-n="${m.n}"`})}
+        ${prev && reason !== 'prepared' ? btn(`Retry mission ${prev.n}`, 'mission-retry', {id: 'mission-retry-prev', attrs: `data-n="${prev.n}"`}) : ''}
+        ${btn('Free practice instead', 'mission-free', {cls: 'btn-ghost', id: 'mission-free'})}</div></section>`;
+  }
+  if (kind === 'wait') return '';
+  if (kind === 'done') return `<section class="mission collapsed" aria-labelledby="mission-title">${head(`Training · Dispatch: ${MENTOR}`, 'All four missions played',
+    `${btn('See your debrief', 'mission-final', {cls: 'btn-sm', id: 'mission-final'})}${btn('Hide', 'mission-free', {cls: 'btn-sm btn-ghost', id: 'mission-free'})}`)}</section>`;
+  if (kind === 'debrief') {
+    const done = missions.results[m.n]?.complete, next = missionFor(m.n + 1);
+    const failed = !done && m.failed?.(c);
+    return `<section class="mission debrief ${missions.details ? 'show-details' : ''}" aria-labelledby="mission-title">${head(`Mission ${m.n} of 4 · Debrief`, m.title, `<span class="result ${done ? 'ok' : 'miss'}">${done ? `${icon('check')}Complete` : 'Not complete'}</span>`)}
+      ${failed ? `<p class="mission-say">${failed}</p>` : ''}
+      <div class="debrief-body">${m.debrief(c)}</div>
+      <div class="mission-actions">${btn(missions.details ? 'Shorter' : 'Full explanation', 'mission-details', {cls: 'btn-sm btn-ghost mission-more', id: 'mission-details', attrs: `aria-expanded="${!!missions.details}"`})}${next
+        ? btn(`Start mission ${next.n}`, next.prepared ? 'mission-prepared' : 'mission-next', {cls: 'btn-primary', id: 'mission-next', attrs: `data-n="${next.n}"`})
+        : btn('See your debrief', 'mission-final', {cls: 'btn-primary', id: 'mission-final'})}
+        ${btn(`Retry mission ${m.n}`, 'mission-retry', {id: 'mission-retry', attrs: `data-n="${m.n}"`})}</div>
+      <p class="hint">${next && !next.prepared ? `Starting mission ${next.n} marks you ready for round ${state.round + 1}. Refit purchases below are optional.` : 'Retrying restores the start of this mission: the same sealed hazards and the same rival plan.'}</p></section>`;
+  }
+  const st = m.steps[step], hints = m.hints || [], level = missions.hints[m.n] || 0;
+  const body = missions.hidden ? '' : `<div class="mission-body">
+      <p class="mission-goal"><b>Objective</b> ${m.goal}</p>
+      ${m.uncertain ? `<p class="mission-uncertain">${icon('info')}${m.uncertain}</p>` : ''}
+      <p class="mission-intel"><b>Training rival</b> ${m.intel(c)}</p>
+      <ol class="mission-steps">${m.steps.map((x, i) => `<li class="${x.done(c) ? 'done' : ''} ${i === step ? 'current' : ''}">${x.done(c) ? icon('check') : `<span class="n">${i + 1}</span>`}${x.label}</li>`).join('')}</ol>
+      ${st ? `<p class="mission-say">${st.say(c)}</p>${st.alt?.(c) ? `<p class="mission-alt">${st.alt(c)}</p>` : ''}` : ''}
+      ${m.prompt && !c.flags.prediction && state.phase === 'briefing' ? `<fieldset class="mission-prompt" id="prompt-0"><legend>${m.prompt.question}</legend>${m.prompt.options.map(([v, label], i) =>
+        btn(label, 'mission-answer', {cls: 'prompt-option', id: `prompt-${v}`, attrs: `data-value="${v}"`})).join('')}</fieldset>` : ''}
+      ${m.prompt && c.flags.prediction ? `<p class="mission-feedback">${m.prompt.feedback(c.flags.prediction, c)}</p>` : ''}
+      ${level ? `<ol class="mission-hints">${hints.slice(0, level).map(h => `<li>${h(c)}</li>`).join('')}</ol>` : ''}
+      <div class="mission-actions">
+        ${st?.target ? btn('Show me', 'mission-show', {cls: 'btn-sm', id: 'mission-show'}) : ''}
+        ${btn(missions.details ? 'Fewer details' : 'Objective and steps', 'mission-details', {cls: 'btn-sm btn-ghost mission-more', id: 'mission-details', attrs: `aria-expanded="${!!missions.details}"`})}
+        ${level < hints.length ? btn(level ? 'Another hint' : 'Hint', 'mission-hint', {cls: 'btn-sm', id: 'mission-hint'}) : ''}
+        ${m.n === 4 && state.phase === 'planning' && !state.you.locked && state.you.fuel === 0 ? `<span class="mission-alt">Your tank is empty and fuel is only sold in briefing and refit. ${btn('Retry mission 4', 'mission-retry', {cls: 'btn-sm', id: 'mission-retry-fuel', attrs: 'data-n="4"'})}</span>` : ''}
+      </div></div>`;
+  return `<section class="mission ${missions.hidden ? 'collapsed' : ''} ${missions.details ? 'show-details' : ''}" aria-labelledby="mission-title">
+    ${head(`Mission ${m.n} of 4 · ${st ? `step ${step + 1} of ${m.steps.length}` : MENTOR}`, m.title, toggle)}
+    ${missions.hidden && st ? `<p class="mission-mini">${st.label}</p>` : ''}${body}</section>`;
+}
+
+function missionsDialog() {
+  const active = missions?.active;
+  modal('Missions', `<p class="lede">${MENTOR}, the yard dispatcher, runs four short missions. Each starts from a checkpoint you can return to.</p>
+    <ol class="mission-list">${MISSIONS.map(m => { const r = missions?.results[m.n];
+      return `<li class="${active === m.n ? 'current' : ''}"><div><b>${m.n}. ${m.title}</b><span>${m.goal}</span><span class="hint">${r ? (r.complete ? 'Complete' : 'Played, not complete') : active === m.n ? 'In progress' : 'Not played yet'}</span></div>
+        ${m.prepared || practice?.hasCheckpoint(m.n) ? btn(active === m.n ? 'Restart' : r ? 'Retry' : 'Start', m.prepared ? 'mission-prepared' : 'mission-retry', {cls: 'btn-sm', id: `list-mission-${m.n}`, attrs: `data-n="${m.n}"`}) : ''}</li>`; }).join('')}</ol>
+    <div class="dialog-actions">${active === 'free' ? btn('Show guidance again', 'missions-resume', {id: 'missions-resume'}) : btn('Free practice', 'mission-free', {id: 'missions-free'})}${btn('Close', 'close-dialog', {cls: 'btn-primary', id: 'missions-close'})}</div>`);
+}
+
+// The closing debrief after mission 4, from the recorded results of each mission.
+function finalDebrief() {
+  const rows = MISSIONS.map(m => { const r = missions.results[m.n];
+    return `<tr><th scope="row">${m.n}. ${m.title}</th><td>${r ? (r.complete ? `${icon('check')}Complete` : 'Not complete') : 'Not played'}</td><td class="num">${r ? signedMoney(r.change) : ''}</td></tr>`; }).join('');
+  modal('Your training debrief', `<p class="lede">You’ve planned, locked and read four rounds. Here’s how each lesson went.</p>
+    <table class="ledger-mini wide"><thead><tr><th scope="col">Mission</th><th scope="col">Result</th><th scope="col" class="num">Net worth change</th></tr></thead><tbody>${rows}</tbody></table>
+    <p class="hint">Net worth changes include fleet depreciation, which happens every round whether drones fly or not.</p>
+    <h3>Retry a lesson</h3><div class="button-row">${MISSIONS.map(m => btn(`Mission ${m.n}`, m.prepared ? 'mission-prepared' : 'mission-retry', {cls: 'btn-sm', id: `final-retry-${m.n}`, attrs: `data-n="${m.n}"`})).join('')}</div>
+    <div class="dialog-actions">${btn('Continue free practice', 'mission-free', {id: 'final-free'})}${btn('Play with others', 'home', {cls: 'btn-primary', id: 'final-home'})}</div>`);
+}
+
+// Restoring or preparing a yard replaces the practice room with an earlier or different state,
+// so the client resets to it directly instead of treating it as a newer server reply.
+async function reloadPractice() {
+  const v = await api(`/rooms/${session.code}`, undefined, session.key);
+  for (const round of [1, 2, 3, 4, 5, 6]) { forget(`sx-seen-${session.code}-${v.you.seat}-${round}`); forget(`sx-draft-${session.code}-${v.you.seat}-${round}`); }
+  if ($('#dialog').open) $('#dialog').close();
+  state = null; draft = M.emptyDraft(); shownWorth = null; clearTimeout(seq.timer); seq = {round: 0, playing: false, timer: 0};
+  accept(v, true);
+  window.scrollTo({top: 0});
+  $('#main')?.focus();
+}
+
+async function retryMission(n) {
+  const m = missionFor(n);
+  const ok = m.prepared && !practice.hasCheckpoint(n) ? await practice.prepared(n) : practice.restore(n);
+  if (!ok) { toast('That checkpoint isn’t available in this browser any more. Start a new practice from the menu.'); return; }
+  missions.active = n; missions.hidden = false;
+  for (const k of Object.keys(missions.results)) if (Number(k) >= n) delete missions.results[k];
+  for (const k of Object.keys(missions.flags)) if (Number(k) >= n) delete missions.flags[k];
+  if (m.prepared) flagsFor(n).loaded = true;
+  saveMissions();
+  await reloadPractice();
+  announce(`Mission ${n} restarted from its checkpoint.`);
+}
+
+async function preparedMission(n) {
+  if (!await practice.prepared(n)) return;
+  missions.active = n; missions.hidden = false;
+  for (const k of Object.keys(missions.results)) if (Number(k) >= n) delete missions.results[k];
+  for (const k of Object.keys(missions.flags)) if (Number(k) >= n) delete missions.flags[k];
+  flagsFor(n).loaded = true;
+  saveMissions();
+  await reloadPractice();
+  announce(`Mission ${n}: the training yard is loaded.`);
 }
 
 // ---------- transport and session ----------
@@ -119,9 +287,9 @@ async function sendPending() {
 
 function confirmed(cmd) {
   const k = cmd.kind;
-  if (k === 'lock') announce('Plan locked.');
+  if (k === 'lock') { announce('Plan locked.'); cue('lock'); }
   else if (k === 'ready' && state.phase === cmd.phase) announce('You are ready. Waiting for other crews.');
-  else if (k === 'scan') toast('Scan complete. The result is private to you.');
+  else if (k === 'scan') { toast('Scan complete. The result is private to you.'); cue('scan'); }
   else if (k === 'purchase') toast({fuel: `Fuel added: ${cmd.quantity} unit${cmd.quantity === 1 ? '' : 's'}.`, drone: 'Drone purchased. It joins your fleet next round.',
     repair: 'Drone repaired.', insurance: 'Insurance bought for next round.', scanner: 'Scanner installed. Scans now cost 10 cr.', retire: 'Drone retired.'}[cmd.item]);
 }
@@ -142,7 +310,7 @@ const FRIENDLY = {
 };
 const friendly = message => FRIENDLY[message] || message;
 
-function draftChanged() { save(draftKey(), draft); updateLive(); coach.sync(); schedulePreview(); }
+function draftChanged() { save(draftKey(), draft); updateLive(); missionSync(); schedulePreview(); }
 
 function schedulePreview() {
   clearTimeout(previewTimer);
@@ -250,8 +418,9 @@ const cmdBtn = (label, action, {cls = '', id, attrs = '', off = ''} = {}) =>
 const tone = n => cents(n) > 0 ? 'pos' : cents(n) < 0 ? 'neg' : 'flat';
 const delta = (n, suffix = '') => `<span class="delta ${tone(n)}">${cents(n) > 0 ? icon('up') : cents(n) < 0 ? icon('down') : ''}${signedMoney(n)}${suffix}</span>`;
 const move = (from, to) => { const r = to / from - 1; return `<span class="delta ${tone(r * 100)}">${cents(r * 100) > 0 ? icon('up') : cents(r * 100) < 0 ? icon('down') : ''}${pct(r)}</span>`; };
-const goodTag = j => `<span class="good s${j}"><i aria-hidden="true"></i>${GOODS[j]}</span>`;
-const pageHead = (kicker, title, lede) => `<header class="page-head"><p class="kicker">${kicker}</p><h1>${title}</h1>${lede ? `<p class="lede">${lede}</p>` : ''}</header>`;
+const goodTag = j => `<span class="good s${j}">${cargoIcon(j)}${GOODS[j]}</span>`;
+// During a mission the dispatcher's panel explains the phase, so the page header stays short.
+const pageHead = (kicker, title, lede) => `<header class="page-head"><p class="kicker">${kicker}</p><h1>${title}</h1>${lede && !(missions && typeof missions.active === 'number') ? `<p class="lede">${lede}</p>` : ''}</header>`;
 const errorSlot = scope => `<p class="field-error" data-error-scope="${scope}" role="alert" hidden></p>`;
 const fieldError = (key, input = '') => `<p class="field-error" id="err-${key}" data-field-error="${key}" ${input ? `data-for="${input}"` : ''} hidden></p>`;
 // Writes only real changes, so polling never re-triggers live regions or alerts.
@@ -268,18 +437,19 @@ function render() {
   patch($('#rail'), null, railHtml());
   patch($('#dock'), null, dockHtml());
   renderMain();
+  placeReveal();
   renderStatus();
   updateLive();
   tweenWorth();
   tweenHeadline();
-  coach.sync();
+  missionSync();
 }
 
 function ensureShell() {
   if ($('#shell')) return;
   $('#app').innerHTML = `<div id="shell" class="shell">
     <header id="hdr" class="topbar"></header>
-    <div class="layout"><main id="main" tabindex="-1"><div id="status"></div><div id="regions"></div></main>
+    <div class="layout"><main id="main" tabindex="-1"><div id="status"></div><div id="r-mission" class="mission-host"></div><div id="regions"></div></main>
     <aside id="rail" class="rail" aria-label="Your corporation and crews"></aside></div>
     <footer class="foot">${session?.practice
       ? `<span>Practice match · runs only in this browser</span><span>${RIVAL} is a training rival. Nothing here reaches a server or a real room.</span>`
@@ -306,10 +476,10 @@ function mainRegions() {
   if (view === 'ledger') return [{id: 'ledger', key: `${s.code}|${s.history.length}|${y.reports?.length}`, html: ledgerHtml}];
   if (s.phase === 'lobby') return [{id: 'lobby', key: `${s.code}|${crew}`, html: lobbyHtml}];
   const mine = JSON.stringify([s.round, y.credits, y.fuel, y.drones, y.scans, y.ready, y.locked, y.recovery, y.scanner, y.inventory, y.shares, y.contracts]);
-  if (s.phase === 'briefing') return [{id: 'brief', key: `${mine}|${crew}`, html: briefingHtml}];
+  if (s.phase === 'briefing') return [{id: 'brief', key: `${mine}|${crew}|${fieldView}`, html: briefingHtml}];
   if (s.phase === 'planning') return y.locked
     ? [{id: 'locked', key: `${mine}|${crew}`, html: lockedHtml}]
-    : [{id: 'plan', key: `${mine}|${s.players.length}`, html: planningHtml}];
+    : [{id: 'plan', key: `${mine}|${s.players.length}|${fieldView}`, html: planningHtml}];
   const log = s.history.at(-1), report = (y.reports || []).find(r => r.round === log?.round);
   const reveal = {id: 'reveal', key: `${s.code}|${log?.round}|${!!report}`, html: () => roundHtml(log, report, true)};
   if (s.phase === 'finished') return [{id: 'final', key: `${s.code}|final|${narrow()}`, html: finalHtml}, reveal];
@@ -361,8 +531,9 @@ function headerHtml() {
         <div id="menu" class="menu ${menuOpen ? 'open' : ''}">
           ${btn(`${icon('ops')}Operations`, 'view', {cls: 'menu-item only-narrow', id: 'menu-ops', attrs: `data-view="ops" aria-pressed="${view === 'ops'}"`})}
           ${btn(`${icon('ledger')}Ledger`, 'view', {cls: 'menu-item only-narrow', id: 'menu-ledger', attrs: `data-view="ledger" aria-pressed="${view === 'ledger'}"`})}
-          ${session?.practice ? btn(`${icon('info')}Guide`, 'guide', {cls: 'menu-item', id: 'menu-guide'}) : ''}
+          ${session?.training ? btn(`${icon('info')}Missions`, 'missions', {cls: 'menu-item', id: 'menu-missions'}) : ''}
           ${btn(`${icon('help')}How to play`, 'help', {cls: 'menu-item', id: 'menu-help'})}
+          ${btn(`${icon('sound')}Sound cues: ${soundOn() ? 'on' : 'off'}`, 'sound', {cls: 'menu-item', id: 'menu-sound', attrs: `aria-pressed="${soundOn()}"`})}
           ${session?.practice ? btn(`${icon('replay')}Restart practice`, 'practice', {cls: 'menu-item', id: 'menu-restart'})
             : btn(`${icon('key')}Your rejoin key`, 'key', {cls: 'menu-item', id: 'menu-key'})}
           ${btn(`${icon('leave')}${session?.practice ? 'Leave practice' : 'Back to start screen'}`, 'home', {cls: 'menu-item', id: 'menu-home'})}
@@ -470,6 +641,7 @@ function updateLive() {
     if (busy && el.id === busyId) el.setAttribute('aria-busy', 'true'); else el.removeAttribute('aria-busy');
   }
   if (state.phase === 'briefing' || state.phase === 'upgrade') updateFuelControl();
+  placeTokens();
   if (state.phase !== 'planning' || state.you.locked) return;
   const ev = evaluation(), t = ev.totals;
   const plan = $('#plan-form');
@@ -487,7 +659,10 @@ function updateLive() {
     setLive(`sector-${j}`, ids.length
       ? `${plural(ids.length, 'drone')} going · ${normal * state.rules.fuel_use[j]} fuel · ${money(normal * state.rules.deploy_cost)} cr · up to ${units(M.sum(ids.map(id => id === '-1' ? 1.5 : state.rules.capacity[j])))} units`
       : 'No drones going');
+    setLive(`load-${j}`, ids.length ? `${plural(ids.length, 'drone')} going` : '');
+    setLive(`cmp-${j}`, ids.length ? ids.map(droneName).join(', ') : '—');
     $(`#sector-${j}`)?.classList.toggle('active', ids.length > 0);
+    $(`.stage-site.at-${j}`)?.classList.toggle('active', ids.length > 0);
   }
   for (const el of $$('[data-field-error]')) {
     const msg = ev.errors[el.dataset.fieldError] || '';
@@ -562,22 +737,105 @@ function scanOff(target, j) {
   return '';
 }
 
-function sectorHtml(j, mode) {
-  const r = state.rules, n = state.players.length;
-  return `<article class="sector s${j}" id="sector-${j}" aria-labelledby="sector-${j}-name">
-    <div class="sector-art">${art(j)}</div>
-    <div class="sector-info">
-      <h3 id="sector-${j}-name">${SECTORS[j]}</h3>
-      <p class="sector-yield">${goodTag(j)}<span>${units(r.capacity[j])} per drone</span></p>
-      <dl class="facts"><div><dt>Shared reserve</dt><dd>${units(r.reserve[j] * n)} units this round</dd></div>
-        <div><dt>Each drone sent</dt><dd>${r.fuel_use[j]} fuel + ${money(r.deploy_cost)} cr</dd></div></dl>
-      ${oddsBar(j)}${scanResult(j)}
-      ${mode === 'brief' && !state.you.scans.some(x => x.target === 'hazard' && x.sector === j)
-        ? cmdBtn(`Scan hazard · ${money(state.you.scanner ? r.upgraded_scan_cost : r.scan_cost)} cr`, 'scan', {cls: 'btn-sm', id: `scan-h-${j}`, attrs: `data-target="hazard" data-sector="${j}"`, off: scanOff('hazard', j)})
-        : ''}
-    </div>
-    ${mode === 'plan' ? `<div class="sector-controls">${chipsHtml(j)}${bidHtml(j)}</div>` : ''}
+// ---------- the salvage field ----------
+
+// The yard: one illustrated scene with the dock on the left and the three sites across it. It is
+// decorative (aria-hidden); every decision is made with the real controls in the site columns,
+// which sit directly beneath their site on wide screens and stack as full-width views on phones.
+const hazardWord = v => v === 1 ? 'clear' : v === .5 ? 'disrupted' : 'severe';
+function siteNote(j) {
+  const scan = state.you.scans.find(x => x.target === 'hazard' && x.sector === j);
+  if (scan) return `<em class="tone-${M.hazardResult(scan.value).tone}">Your scan: ${hazardWord(scan.value)}</em>`;
+  const o = M.hazardOdds(state.rules, j);
+  return `<em>${Math.round(o.clear * 100)}% clear · ${Math.round(o.severe * 100)}% severe</em>`;
+}
+
+function stageHtml(mode) {
+  const fleet = M.fleetFor(state.you);
+  return `<div class="stage" aria-hidden="true">${yard()}
+    <svg class="routes" id="routes" viewBox="0 0 1200 420" preserveAspectRatio="xMidYMid slice"></svg>
+    ${[0, 1, 2].map(j => `<div class="stage-site at-${j} s${j}" data-action="pick" data-sector="${j}">${siteArt(j)}
+      <span class="stage-tag"><b>${SECTORS[j]}</b><span>${cargoIcon(j)}${GOODS[j]} <b class="num">${money(state.prices[j])}</b></span>${siteNote(j)}
+        ${mode === 'plan' ? `<span class="stage-load" data-live="load-${j}"></span>` : ''}</span></div>`).join('')}
+    ${fleet.map((d, i) => `<span class="tok ${d.disabled ? 'off' : ''} ${d.recovery ? 'rec' : ''}" data-tok="${d.id}" data-pad="${i}">${d.recovery ? 'R' : Number(d.id) + 1}</span>`).join('')}
+  </div>`;
+}
+
+// Numbers view: the same three sites as a comparison table for players who plan from figures.
+function compareHtml(mode) {
+  const s = state, r = s.rules, n = s.players.length, o = j => M.hazardOdds(r, j), pc = v => Math.round(v * 100);
+  const rows = [
+    ['Cargo', j => `${cargoIcon(j)}${GOODS[j]} <b class="num">${money(s.prices[j])}</b>`],
+    ['Demand this round', j => `${units(s.demand[j])} units`],
+    ['Shared reserve', j => `${units(r.reserve[j] * n)} units`],
+    ['Each drone brings', j => `up to ${units(r.capacity[j])}`],
+    ['Each drone costs', j => `${r.fuel_use[j]} fuel + ${money(r.deploy_cost)} cr`],
+    ['Clear / half / severe', j => `${pc(o(j).clear)} / ${pc(o(j).half)} / ${pc(o(j).severe)}%`],
+    ['Your hazard scan', j => { const sc = s.you.scans.find(x => x.target === 'hazard' && x.sector === j); return sc ? hazardWord(sc.value) : '—'; }],
+  ];
+  if (mode === 'plan') rows.push(['Your drones', j => `<span data-live="cmp-${j}">—</span>`]);
+  return `<div class="compare" role="region" aria-label="Sites compared, scrolls sideways" tabindex="0"><table><caption class="sr-only">The three sites compared</caption>
+    <thead><tr><th scope="col"><span class="sr-only">Measure</span></th>${[0, 1, 2].map(j => `<th scope="col" class="s${j}">${SECTORS[j]}</th>`).join('')}</tr></thead>
+    <tbody>${rows.map(([label, cell]) => `<tr><th scope="row">${label}</th>${[0, 1, 2].map(j => `<td class="s${j}">${cell(j)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+}
+
+function fieldHtml(mode) {
+  const numbers = fieldView === 'numbers';
+  const toggle = `<div class="seg field-toggle" role="group" aria-label="Field view" data-mode="${fieldView}">
+    <button type="button" class="seg-btn" id="view-yard" data-action="field-view" data-view="yard" aria-pressed="${!numbers}">Yard</button>
+    <button type="button" class="seg-btn" id="view-numbers" data-action="field-view" data-view="numbers" aria-pressed="${numbers}">Numbers</button></div>`;
+  return `<section class="field ${numbers ? 'show-numbers' : ''}" id="sec-dest" aria-labelledby="h-field">
+    <div class="field-head"><h2 id="h-field">${mode === 'plan' ? 'Dispatch' : 'The salvage field'}</h2>${toggle}</div>
+    ${numbers ? compareHtml(mode) : stageHtml(mode)}
+    <div class="sites">
+      <div class="dock-col"><h3 class="col-title">Your dock</h3>${fleetHtml()}<p class="hint">${mode === 'plan'
+        ? `Each drone sent costs its fuel and ${money(state.rules.deploy_cost)} cr, even if a rival wins access. Drones at the dock bring back nothing and still lose value.`
+        : `Fuel ${state.you.fuel} of 16 · scans ${state.you.scans.length} of 2 used.`}</p></div>
+      ${[0, 1, 2].map(j => siteHtml(j, mode)).join('')}</div>
+    ${mode === 'plan' ? fieldError('fuel') : ''}
+  </section>`;
+}
+
+function siteHtml(j, mode) {
+  const r = state.rules, n = state.players.length, scanned = state.you.scans.some(x => x.target === 'hazard' && x.sector === j);
+  return `<article class="site-col s${j}" id="sector-${j}" aria-labelledby="sector-${j}-name">
+    <div class="site-banner">${siteArt(j)}</div>
+    <h3 id="sector-${j}-name">${SECTORS[j]}</h3>
+    <p class="site-good">${cargoIcon(j)}<span>${GOODS[j]}</span><b class="num">${money(state.prices[j])}</b><span class="hint">cr each</span></p>
+    <dl class="facts"><div><dt>Each drone</dt><dd>up to ${units(r.capacity[j])} · ${r.fuel_use[j]} fuel + ${money(r.deploy_cost)} cr</dd></div>
+      <div><dt>Shared reserve</dt><dd>${units(r.reserve[j] * n)} units this round</dd></div></dl>
+    ${oddsBar(j)}${scanResult(j)}
+    ${mode === 'brief' && !scanned
+      ? cmdBtn(`Scan hazard · ${money(state.you.scanner ? r.upgraded_scan_cost : r.scan_cost)} cr`, 'scan', {cls: 'btn-sm', id: `scan-h-${j}`, attrs: `data-target="hazard" data-sector="${j}"`, off: scanOff('hazard', j)})
+      : ''}
+    ${mode === 'plan' ? `${chipsHtml(j)}${bidHtml(j)}` : ''}
   </article>`;
+}
+
+// Moves the dock tokens to the sites they are assigned to and redraws their routes.
+let lastRoutes = '';
+function placeTokens() {
+  const stage = $('.stage:not(.rv-stage)'), routes = $('#routes');
+  if (!stage || !routes) return;
+  const plan = state.phase === 'planning' && !state.you.locked ? draft.allocation : state.you.plan?.allocation || {};
+  const slots = [0, 0, 0], paths = [], fresh = [];
+  for (const tok of $$('.tok', stage)) {
+    const id = tok.dataset.tok, j = plan[id], pad = DOCK_PADS[Number(tok.dataset.pad)] ?? DOCK_PADS[0];
+    let x = pad.x, y = pad.y;
+    if (j !== undefined) {
+      const a = SITE_ANCHORS[j], k = slots[j]++;
+      x = a.x - 7 + k * 3.4; y = a.y - 22;
+      paths.push({d: route(Number(tok.dataset.pad), j, x, y), j, id});
+    }
+    tok.style.setProperty('left', `${x}%`);
+    tok.style.setProperty('top', `${y}%`);
+    tok.classList.toggle('sent', j !== undefined);
+  }
+  const key = JSON.stringify(paths);
+  if (key === lastRoutes && routes.childElementCount === paths.length) return;
+  const before = new Set(JSON.parse(lastRoutes || '[]').map(p => `${p.id}:${p.j}`));
+  lastRoutes = key;
+  routes.innerHTML = paths.map(p => `<path class="rt s${p.j} ${before.has(`${p.id}:${p.j}`) || reduceMotion() ? '' : 'fresh'}" d="${p.d}" pathLength="1"/>`).join('');
 }
 
 function chipsHtml(j) {
@@ -585,7 +843,7 @@ function chipsHtml(j) {
   return `<fieldset class="chips"><legend>Send drones</legend><div class="chip-row">${fleet.map(d => {
     const id = String(d.id), blocked = d.disabled ? 'Disabled' : d.recovery && j !== 0 ? 'Belt only' : '';
     return `<button type="button" class="chip" id="chip-${id}-${j}" data-action="assign" data-drone="${id}" data-sector="${j}" aria-pressed="${draft.allocation[id] === j}" ${blocked ? 'disabled' : ''}
-      aria-label="Send ${droneName(id)} to ${SECTORS[j]}${blocked ? ` (${blocked.toLowerCase()})` : ''}">${drone()}<span>${droneName(id)}</span>${blocked ? `<small>${blocked}</small>` : d.insured ? '<small>Insured</small>' : ''}</button>`;
+      aria-label="Send ${droneName(id)} to ${SECTORS[j]}${blocked ? ` (${blocked.toLowerCase()})` : ''}"><span class="chip-n" aria-hidden="true">${id === '-1' ? 'R' : Number(id) + 1}</span><span>${droneName(id)}</span>${blocked ? `<small>${blocked}</small>` : d.insured ? '<small>Insured</small>' : ''}</button>`;
   }).join('')}</div></fieldset><p class="sector-sum" data-live="sector-${j}">No drones going</p>`;
 }
 
@@ -603,7 +861,7 @@ function bidHtml(j) {
 function fleetHtml() {
   const fleet = M.fleetFor(state.you);
   return `<ul class="fleet" aria-label="Your fleet">${fleet.map(d => `<li class="fleet-item ${d.disabled ? 'disabled' : ''} ${d.insured ? 'insured' : ''}">
-    ${drone()}<span class="fi-name">${droneName(d.id)}</span>
+    ${droneGlyph()}<span class="fi-name">${droneName(d.id)}</span>
     <span class="fi-state" data-live-drone="${d.id}">${d.disabled ? 'Disabled · repair at refit' : 'Idle at port'}</span>
     <span class="fi-meta">${d.recovery ? 'Temporary · no book value' : `${d.insured ? 'Insured · ' : ''}${money(d.value)} book value`}</span></li>`).join('')}</ul>`;
 }
@@ -619,7 +877,7 @@ function orderHtml(kind, j) {
   const whole = kind === 'shares', y = state.you, quote = (whole ? state.stocks : state.prices)[j], held = (whole ? y.shares : y.inventory)[j];
   const name = whole ? COMPANIES[j] : GOODS[j], o = draft[kind][j], id = `${kind}-${j}`;
   return `<div class="order" id="row-${id}" data-side="${o.side}" role="group" aria-labelledby="name-${id}">
-    <div class="order-asset"><span class="asset-mark s${j} ${whole ? 'share' : ''}" aria-hidden="true">${whole ? TICKERS[j] : ''}</span>
+    <div class="order-asset"><span class="asset-mark s${j} ${whole ? 'share' : ''}" aria-hidden="true">${whole ? insignia(j) : cargoIcon(j)}</span>
       <div><b id="name-${id}">${name}</b><span class="asset-kind">${whole ? `Company shares · linked to ${GOODS[j]}` : `Cargo · from the ${SECTORS[j]}`}</span></div></div>
     <dl class="order-facts"><div><dt>You hold</dt><dd class="num">${units(held)}</dd></div><div><dt>Opening price</dt><dd class="num">${money(quote)}</dd></div></dl>
     <div class="order-controls">
@@ -696,10 +954,9 @@ function briefingHtml() {
     <p class="fleet-note">${y.recovery ? `${icon('alert')}No normal mission is affordable, so you have a temporary recovery drone this round (Belt only, protected access, no fuel or deployment cost).`
       : `${drone()}You have ${plural(working.length, 'working drone')}${disabled ? `, ${disabled} disabled (repair at refit)` : ''} and ${y.fuel} fuel.`}</p>
   </section>
-  <section class="block" aria-labelledby="h-sectors"><div class="block-head"><h2 id="h-sectors">Sectors</h2>
-    <p>Private scans: <b>${y.scans.length} of 2 used</b> · ${money(cost)} cr each${y.scanner ? ' with your scanner' : ''}. A hazard scan shows this round’s actual outcome for that sector, only to you.</p></div>
-    ${errorSlot('scan')}
-    <div class="sectors">${[0, 1, 2].map(j => sectorHtml(j, 'brief')).join('')}</div></section>
+  ${fieldHtml('brief')}
+  <p class="block-note">Private scans: <b>${y.scans.length} of 2 used</b> · ${money(cost)} cr each${y.scanner ? ' with your scanner' : ''}. A hazard scan shows this round’s actual outcome at that site, only to you.</p>
+  ${errorSlot('scan')}
   <section class="block" aria-labelledby="h-events"><div class="block-head"><h2 id="h-events">Market events</h2>
     <p>Each cargo has a sealed event this round: −8% (20% chance), none (60%), or +8% (20%). An event scan reveals it to you.</p></div>
     <ul class="events">${[0, 1, 2].map(j => { const scan = y.scans.find(x => x.target === 'event' && x.sector === j);
@@ -735,13 +992,9 @@ function planningHtml() {
   const s = state, r = s.rules, n = s.players.length, ex = M.supplyExample(s.demand[0], r.reserve[0] * n, r);
   const expected = [0, 1, 2].map(j => `${SHORT[j]} ${units((r.clear[j] + .5 * r.disruption[j]) * 100)}%`).join(', ');
   return `${pageHead(`Round ${s.round} of 6 · Planning`, 'Make your plan', 'Choose destinations, set orders, review, then lock. Move between sections freely; nothing is final until you lock, and rivals see your plan only after every crew has locked.')}
-  <nav class="jump" aria-label="Plan sections"><a href="#sec-dest">1 Destinations</a><a href="#sec-orders">2 Orders</a><a href="#sec-deliveries">3 Deliveries</a><a href="#sec-estimate">4 Estimate</a></nav>
+  <nav class="jump" aria-label="Plan sections"><a href="#sec-dest">1 Dispatch</a><a href="#sec-orders">2 Orders</a><a href="#sec-deliveries">3 Deliveries</a><a href="#sec-estimate">4 Estimate</a></nav>
   <div id="plan-form">
-  <section id="sec-dest" class="block" aria-labelledby="h-dest"><div class="block-head"><h2 id="h-dest"><span class="step">1</span>Destinations</h2>
-    <p>Send each working drone to one sector, or leave it at port. A drone sent costs its fuel and ${money(r.deploy_cost)} cr even if a rival wins access. Idle drones still depreciate.</p></div>
-    ${fleetHtml()}
-    <div class="sectors">${[0, 1, 2].map(j => sectorHtml(j, 'plan')).join('')}</div>
-    ${fieldError('fuel')}</section>
+  ${fieldHtml('plan')}
   <section id="sec-orders" class="block" aria-labelledby="h-orders"><div class="block-head"><h2 id="h-orders"><span class="step">2</span>Market orders</h2>
     <p>Trades fill at the opening prices below, before extraction. A buy reserves its price plus ${pct(r.fee, 0).replace('+', '')} fee now. Sale proceeds arrive at settlement and can’t fund this plan. Salvage from this round can be sold next round.</p></div>
     <h3 class="group-title">Cargo</h3><div class="orders">${[0, 1, 2].map(j => orderHtml('cargo', j)).join('')}</div>
@@ -811,7 +1064,12 @@ const ERROR_TARGET = k => k === 'fuel' ? 'sec-dest' : k === 'credits' ? 'sec-ord
 
 function reviewDialog() {
   const ev = evaluation(), s = state;
-  modal(`Review your round ${s.round} plan`, `${planSummaryHtml(ev, {review: true})}
+  let note = '';
+  if (missions && typeof missions.active === 'number') {
+    flagsFor(missions.active).reviewed = true; saveMissions();
+    note = `<p class="mission-note">${dispatchMark()}<span><b>${MENTOR}:</b> ${ev.valid ? 'This is everything the plan reserves. Lock it when you’re satisfied; locking is final for the round.' : 'Something needs fixing first. Each link below jumps to it.'}</span></p>`;
+  }
+  modal(`Review your round ${s.round} plan`, `${note}${planSummaryHtml(ev, {review: true})}
     ${ev.valid ? '' : `<section class="issues" role="alert"><h3>${icon('alert')}Fix before locking</h3><ul>${Object.entries(ev.errors).map(([k, v]) =>
       `<li>${btn(ERROR_LABEL(k), 'goto', {cls: 'btn-link', attrs: `data-target="${ERROR_TARGET(k)}"`})}: ${esc(v)}</li>`).join('')}</ul></section>`}
     <div class="dialog-actions">${btn('Keep editing', 'close-dialog', {id: 'keep-editing'})}
@@ -834,9 +1092,17 @@ function startSequenceIfNew() {
   clearTimeout(seq.timer);
   if (read(key) || reduceMotion()) { seq = {round, playing: false, timer: 0}; return; }
   save(key, true);
-  seq = {round, playing: true, timer: setTimeout(() => endSequence(), 3700)};
+  seq = {round, playing: true, timer: setTimeout(() => endSequence(), 3700), cues: revealCues(state.history.at(-1))};
 }
-function endSequence() { seq.playing = false; clearTimeout(seq.timer); $('.seq-live')?.classList.remove('playing'); setNote(''); finishTween('.seq-live .big-n'); coach.sync(); }
+
+// Sound cues timed to the reveal's movements; cancelled if the player skips.
+function revealCues(log) {
+  if (!soundOn() || !log) return [];
+  const seat = state.you.seat, severe = log.hazards.some((h, j) => h === 0 && Object.values(log.plans[seat].allocation).includes(j));
+  return [[500, 'dispatch'], [1350, severe ? 'hazard' : 'scan'], [1800, log.gains[seat].some(g => g > 0) ? 'dock' : null], [2500, 'settle']]
+    .filter(([, name]) => name).map(([at, name]) => setTimeout(() => cue(name), at));
+}
+function endSequence() { seq.playing = false; clearTimeout(seq.timer); (seq.cues || []).forEach(clearTimeout); $('.seq-live')?.classList.remove('playing'); setNote(''); finishTween('.seq-live .big-n'); }
 function setNote(text) { const n = $('#seq-note'); if (n) n.textContent = text; }
 
 function sectorStory(log, report, j) {
@@ -857,6 +1123,46 @@ function sectorStory(log, report, j) {
   return {mine, crews, access, you};
 }
 
+// The settled round played out on the yard, in settlement order, from the public record only:
+// drones fly out, contested sites are marked, hazards land, cargo returns, prices update.
+// It is decorative (aria-hidden); the numbered steps below carry the same facts as text.
+function revealStage(log, report) {
+  const s = state, seat = s.you.seat, hits = new Set((report?.hits || []).filter(h => !h.repaired).map(h => String(h.drone)));
+  const slots = [0, 0, 0], toks = [], crews = [0, 0, 0];
+  log.plans.forEach((pl, i) => {
+    const sites = new Set();
+    Object.entries(pl.allocation).forEach(([id, j], k) => {
+      const a = SITE_ANCHORS[j], n = slots[j]++, mine = i === seat;
+      const x = a.x - 8 + (n % 5) * 3.6, y = a.y - 22 - Math.floor(n / 5) * 9;
+      const from = mine ? DOCK_PADS[k] ?? DOCK_PADS[0] : {x: 104, y: 24 + 12 * i};
+      sites.add(j);
+      toks.push(`<span class="tok rv ${mine ? 'mine' : `crew c${i}`} ${mine && hits.has(id) ? 'hit' : ''}" data-x="${x}" data-y="${y}" data-fx="${from.x}" data-fy="${from.y}">${mine ? (id === '-1' ? 'R' : Number(id) + 1) : esc(s.players[i]?.name?.[0] ?? '?')}</span>`);
+    });
+    sites.forEach(j => crews[j]++);
+  });
+  const crates = log.gains[seat].map((g, j) => g > 0 ? `<span class="crate s${j}" data-x="${17 + j * 3}" data-y="${57 - j * 6}" data-fx="${SITE_ANCHORS[j].x}" data-fy="${SITE_ANCHORS[j].y}">${cargoIcon(j)}+${units(g)}</span>` : '').join('');
+  const marks = [0, 1, 2].map(j => {
+    const h = M.hazardResult(log.hazards[j]), a = SITE_ANCHORS[j], winner = log.access[j];
+    const contest = winner !== null ? `${esc(s.players[winner]?.name ?? '')} won access` : crews[j] > 1 ? `Shared by ${crews[j]} crews` : '';
+    const p0 = log.opening_prices[j], p1 = log.prices[j];
+    return `<span class="rv-mark at-${j}" data-x="${a.x}" data-y="${a.y}">
+      ${contest ? `<em class="rv-contest">${contest}</em>` : ''}
+      <b class="rv-hz tone-${h.tone}">${h.label}</b>
+      <span class="rv-price num">${money(p0)} → ${money(p1)} <i class="${p1 > p0 ? 'up' : p1 < p0 ? 'down' : ''}">${pct(p1 / p0 - 1)}</i></span></span>`;
+  }).join('');
+  return `<div class="stage rv-stage" aria-hidden="true">${yard()}
+    ${[0, 1, 2].map(j => `<div class="stage-site at-${j} s${j} ${log.hazards[j] === 0 ? 'severe' : ''}">${siteArt(j)}</div>`).join('')}
+    ${marks}${toks.join('')}${crates}</div>`;
+}
+
+// Positions the reveal's objects from their data attributes (inline styles are not allowed).
+function placeReveal() {
+  for (const el of $$('.rv-stage [data-x]')) {
+    el.style.setProperty('--x', `${el.dataset.x}%`); el.style.setProperty('--y', `${el.dataset.y}%`);
+    if (el.dataset.fx) { el.style.setProperty('--fx', `${el.dataset.fx}%`); el.style.setProperty('--fy', `${el.dataset.fy}%`); }
+  }
+}
+
 function roundHtml(log, report, live) {
   if (!log) return '';
   const s = state, seat = s.you.seat, r = s.rules, n = s.players.length, playing = live && seq.playing && seq.round === log.round;
@@ -875,10 +1181,10 @@ function roundHtml(log, report, live) {
     : `<p>${report ? 'You placed no trades.' : 'Your trade details for this round aren’t recorded on this server.'}</p>`}
     <p class="hint">All crews’ net orders: cargo ${log.netcargo.map((q, j) => `${GOODS[j]} ${q > 0 ? '+' : ''}${units(q)}`).join(', ')}; shares ${log.netstock.map((q, j) => `${TICKERS[j]} ${q > 0 ? '+' : ''}${q}`).join(', ')}.</p>`;
 
-  const accessBody = `<ul class="sector-results">${stories.map((st, j) => `<li class="s${j}"><span class="sr-art">${art(j)}</span><div><b>${SECTORS[j]}</b><span>${st.access}</span>${st.you ? `<span class="you">${st.you}</span>` : ''}</div></li>`).join('')}</ul>`;
+  const accessBody = `<ul class="sector-results">${stories.map((st, j) => `<li class="s${j}"><span class="sr-art">${siteArt(j)}</span><div><b>${SECTORS[j]}</b><span>${st.access}</span>${st.you ? `<span class="you">${st.you}</span>` : ''}</div></li>`).join('')}</ul>`;
 
   const hazardBody = `<ul class="sector-results">${[0, 1, 2].map(j => { const h = M.hazardResult(log.hazards[j]), mine = log.gains[seat][j];
-    return `<li class="s${j}"><span class="sr-art">${art(j)}</span><div><b>${SECTORS[j]} <span class="hz tone-${h.tone}">${h.label}</span></b><span>${h.effect[0].toUpperCase() + h.effect.slice(1)}. Crews recovered ${units(log.extraction[j])} of ${units(r.reserve[j] * n)} ${GOODS[j]}.</span>${stories[j].mine.length ? `<span class="you">You recovered ${units(mine)}.</span>` : ''}</div></li>`; }).join('')}</ul>
+    return `<li class="s${j}"><span class="sr-art">${siteArt(j)}</span><div><b>${SECTORS[j]} <span class="hz tone-${h.tone}">${h.label}</span></b><span>${h.effect[0].toUpperCase() + h.effect.slice(1)}. Crews recovered ${units(log.extraction[j])} of ${units(r.reserve[j] * n)} ${GOODS[j]}.</span>${stories[j].mine.length ? `<span class="you">You recovered ${units(mine)}.</span>` : ''}</div></li>`; }).join('')}</ul>
     ${(report?.hits || []).map(h => `<p class="${h.repaired ? 'ok' : 'warn-text'}">${icon(h.repaired ? 'check' : 'alert')}${droneName(h.drone)} was disabled in the ${SECTORS[h.sector]}${h.repaired ? ' and repaired automatically by insurance.' : `. Repair it at refit for ${money(r.repair_cost)} cr; until then it counts 25% of book value.`}</p>`).join('')}`;
 
   const marketBody = `<ul class="moves">${[0, 1, 2].map(j => { const d = M.drivers(log.commodity_terms[j], M.COMMODITY_TERMS);
@@ -920,6 +1226,7 @@ function roundHtml(log, report, live) {
       ${live ? `<div class="seq-controls">${btn(`${icon('skip')}Skip`, 'seq-skip', {cls: 'btn-sm', id: 'seq-skip'})}${btn(`${icon('replay')}Replay`, 'seq-replay', {cls: 'btn-sm', id: 'seq-replay'})}</div>` : ''}</div>
     ${live ? `<p class="seq-note hint" id="seq-note" aria-live="polite">${playing ? 'Playing back the settlement that already ran.' : ''}</p>` : ''}
     <div class="seq ${live ? 'seq-live' : ''} ${playing ? 'playing' : ''}">
+      ${live ? revealStage(log, report) : ''}
       ${headline}
       <ol class="seq-steps">${step(0, 'Trades at opening prices', tradeBody)}${step(1, 'Who got access', accessBody)}${step(2, 'Hazards and salvage', hazardBody)}
         ${step(3, 'Market repricing', marketBody)}${step(4, 'Contracts, insurance and depreciation', upkeepBody)}${step(5, 'Your score', scoreBody)}</ol>
@@ -966,7 +1273,7 @@ function refitHtml() {
         ${y.scanner ? `<p class="ok">${icon('check')}Installed</p>` : cmdBtn(`Buy scanner · ${money(r.scanner_cost)} cr`, 'purchase', {id: 'buy-scanner', attrs: 'data-item="scanner"', off: closed || off(y.credits < r.scanner_cost, `Needs ${money(r.scanner_cost)} cr.`)})}</article>
     </div>
     <h3 class="group-title">Your fleet</h3>
-    <ul class="refit-fleet">${y.drones.map(d => `<li>${drone()}<div class="rf-info"><b>${droneName(d.id)}</b>
+    <ul class="refit-fleet">${y.drones.map(d => `<li>${droneGlyph()}<div class="rf-info"><b>${droneName(d.id)}</b>
         <span>${d.disabled ? 'Disabled · counts 25% of book value until repaired' : d.insured ? 'Working · insured for next round' : 'Working'} · ${money(d.value)} book value</span></div>
       <div class="rf-actions">${d.disabled
         ? cmdBtn(`Repair · ${money(r.repair_cost)} cr`, 'purchase', {cls: 'btn-sm', id: `repair-${d.id}`, attrs: `data-item="repair" data-id="${d.id}"`, off: closed || off(y.credits < r.repair_cost, 'Not enough credits.')})
@@ -985,6 +1292,8 @@ function finalHtml() {
   const lede = winners.length > 1 ? `Tied at ${money(winners[0].networth)} cr. Exact ties share the win.`
     : `Final net worth ${money(winners[0].networth)} cr${second ? `, ${money(winners[0].networth - second.networth)} cr ahead of ${esc(second.name)}` : ''}.`;
   return `${pageHead('Match complete · after round 6', title, `${lede} Final scores include every crew’s objective, now revealed. Shares and cargo are marked to final prices without a sale fee.`)}
+  <div class="final-yard" aria-hidden="true"><div class="stage">${yard()}${[0, 1, 2].map(j => `<div class="stage-site at-${j} s${j}">${siteArt(j)}</div>`).join('')}
+    <div class="final-plaque"><span class="kicker">Yard ledger closed</span><b>${winners.map(p => esc(p.name)).join(' · ')}</b><span class="num">${money(winners[0].networth)} cr</span></div></div></div>
   <section class="block" aria-labelledby="h-final"><h2 id="h-final">Final standings</h2>
     <ol class="final-list">${ranks.map(p => `<li class="${p.seat === s.you.seat ? 'me' : ''}"><div class="fl-head"><span class="rank" aria-label="Rank ${p.rank}">${p.rank}</span>${avatar(p)}
       <div class="fl-who"><b>${esc(p.name)}${p.seat === s.you.seat ? ' <span class="badge">You</span>' : ''}</b><span>${esc(p.objective)} · objective ${money(p.breakdown.objective)}</span></div><b class="num fl-total">${money(p.networth)}</b></div>
@@ -1052,14 +1361,13 @@ function modal(title, html, {sheet = false} = {}) {
   $('#dialog-content').innerHTML = `<h2 id="dialog-title">${title}</h2>${html}`;
   d.classList.toggle('sheet', sheet);
   if (!d.open) d.showModal();
-  coach.sync();
 }
 
 function help() {
   modal('How to play', `<p class="lede">Crack the wreck. Play the market. Finish round 6 with the highest net worth.</p>
     <div class="help-practice">${session?.practice
-      ? `<p>The guide walks you through rounds 1 and 2 of this practice match.</p>${btn(`${icon('info')}Open the guide`, 'guide', {id: 'help-guide'})}`
-      : `<p><b>Prefer to learn by doing?</b> Play a guided practice round against a training rival. It runs only in this browser${state ? '; this room stays under “Your rooms”' : ''}.</p>${btn('Play the guided practice', 'practice', {cls: 'btn-primary', id: 'help-practice'})}`}</div>
+      ? `<p>${session.training ? `Four missions with ${MENTOR} teach a round at a time.` : 'This is free practice against the training rival.'}</p>${session.training ? btn(`${icon('info')}Missions`, 'missions', {id: 'help-missions'}) : btn('Learn by playing', 'practice', {id: 'help-practice'})}`
+      : `<p><b>Prefer to learn by doing?</b> Four short missions against a training rival, in this browser only${state ? '; this room stays under “Your rooms”' : ''}.</p>${btn('Learn by playing', 'practice', {cls: 'btn-primary', id: 'help-practice'})}`}</div>
     <h3>A round</h3><ol class="help-steps"><li><b>Briefing.</b> Read demand and hazard odds. Buy fuel and up to two private scans. Everyone marks ready.</li>
       <li><b>Planning.</b> Secretly send drones, bid for access, place buy and sell orders and request deliveries. Then lock; locking is final for the round.</li>
       <li><b>Settlement.</b> Runs the moment the last crew locks: opening-price trades, access, hazards and salvage, cargo prices, share prices, contracts, insurance and depreciation.</li>
@@ -1099,8 +1407,10 @@ function renderLanding() {
     <main id="main" class="landing-main" tabindex="-1">
       <section class="landing-intro"><p class="kicker">Multiplayer alpha · 2–4 crews · 6 rounds</p>
         <h1>Crack the wreck.<br><span>Play the market.</span></h1>
-        <p class="lede">Send salvage drones into three hazardous sites, bid against rival crews for access, and trade what comes back. Every crew plans in secret; every haul moves the same market.</p>
-        ${practiceCta()}</section>
+        <p class="lede">Send salvage drones into three hazardous sites, bid against rival crews for access, and trade what comes back. Every crew plans in secret; every haul moves the same market.</p></section>
+      <div class="landing-yard" aria-hidden="true"><div class="stage">${yard()}
+        ${[0, 1, 2].map(j => `<div class="stage-site at-${j} s${j}">${siteArt(j)}<span class="stage-tag"><b>${SECTORS[j]}</b><span>${cargoIcon(j)}${GOODS[j]} · ${['steady', 'risky', 'dangerous'][j]}</span></span></div>`).join('')}</div></div>
+      ${practiceCta()}
 
       <section class="entry" aria-labelledby="entry-title"><h2 id="entry-title">Start or join a match</h2>
         ${landingNotice ? `<div class="banner error" role="alert">${icon('alert')}<div><p>${esc(landingNotice)}</p></div></div>` : ''}
@@ -1121,17 +1431,17 @@ function renderLanding() {
           <div class="field"><label for="rejoin-key">Private rejoin key</label><input id="rejoin-key" name="key" type="password" maxlength="64" autocomplete="off" aria-describedby="err-rejoin"></div>
           <p class="field-error" id="err-rejoin" role="alert" hidden></p><button class="btn btn-block" type="submit" id="rejoin-submit">Restore</button></form>`)}
       </section>
-      <ul class="manifest" aria-label="The three salvage sites">${[0, 1, 2].map(j => `<li class="s${j}">${art(j)}<b>${SECTORS[j]}</b><span>${GOODS[j]} · ${['steady', 'risky', 'dangerous'][j]}</span></li>`).join('')}</ul></main>
+      <ul class="manifest" aria-label="The three salvage sites">${[0, 1, 2].map(j => `<li class="s${j}">${cargoIcon(j)}<b>${SECTORS[j]}</b><span>${GOODS[j]} · ${['steady', 'risky', 'dangerous'][j]}</span></li>`).join('')}</ul></main>
     <footer class="foot"><span>Frozen economy v0.2 · alpha</span><span>Known balance limits are listed under How to play.</span></footer></div>`;
 }
 
 function practiceCta() {
   const saved = practiceSaved(), going = saved && saved.phase !== 'finished';
-  return `<div class="practice-cta"><div class="pc-art" aria-hidden="true">${drone()}</div><div class="pc-text"><b>New here? Learn by playing.</b>
-    <p>A guided practice round against a training rival. About five minutes, and it runs only in this browser.</p></div>
+  return `<div class="practice-cta"><div class="pc-art" aria-hidden="true">${dispatchMark()}</div><div class="pc-text"><b>New here? Learn by playing.</b>
+    <p>Four short missions with ${MENTOR}, the yard dispatcher, against a training rival. Everything runs in this browser; nothing touches real rooms.</p></div>
     <div class="button-row">${going
-      ? `${btn(`Continue practice · round ${saved.round}`, 'practice-continue', {cls: 'btn-accent', id: 'practice-continue'})}${btn('Start over', 'practice', {cls: 'btn-ghost', id: 'practice-new'})}`
-      : btn('Start guided practice', 'practice', {cls: 'btn-accent', id: 'practice-start'})}</div></div>`;
+      ? `${btn(`Continue practice · round ${saved.round}`, 'practice-continue', {cls: 'btn-primary', id: 'practice-continue'})}${btn('Start the missions again', 'practice', {cls: 'btn-ghost', id: 'practice-new'})}`
+      : `${btn('Learn by playing', 'practice', {cls: 'btn-primary', id: 'practice-start'})}${btn('Free practice', 'practice-free', {cls: 'btn-ghost', id: 'practice-free'})}`}</div></div>`;
 }
 
 function updateLanding() {
@@ -1175,7 +1485,7 @@ async function loadPractice() {
   return practice;
 }
 
-async function startPractice() {
+async function startPractice(training = true) {
   if (busy) return;
   const name = ($('#entry-name')?.value || '').trim().slice(0, 24) || 'Rookie Salvage';
   busy = true;
@@ -1184,13 +1494,12 @@ async function startPractice() {
     try { P = await loadPractice(); }
     catch { toast('Practice needs the built client. Run “npm run build”, then reload.'); return; }
     const old = read('sx-practice');
-    if (old) forget(`sx-guide-${old.code}`);
+    if (old) forget(`sx-missions-${old.code}`);
     if (state) closeRoom();
     else if ($('#dialog').open) $('#dialog').close();
-    const {code, key} = await P.create(name);
+    const {code, key} = await P.create(name, {training});
     busy = false;
     await resume(code, key, true);
-    coach.start(0);
   } catch (err) { toast(`Couldn’t start the practice: ${err.message}`); if (!state) render(); }
   finally { busy = false; }
 }
@@ -1198,16 +1507,18 @@ async function startPractice() {
 async function continuePractice() {
   const saved = practiceSaved();
   if (!saved) { toast('No practice match on this browser yet.'); return; }
-  try { await resume(saved.code, saved.key, true); coach.resume(); }
+  try { await resume(saved.code, saved.key, true); }
   catch { toast('Practice needs the built client. Run “npm run build”, then reload.'); }
 }
 
 // ---------- session lifecycle ----------
 
 async function resume(code, key, inPractice = false) {
-  if (inPractice) (await loadPractice()).wake();
-  const requested = {code, key, generation: ++sessionGeneration, ...(inPractice ? {practice: true} : {})};
+  let training = false;
+  if (inPractice) { const P = await loadPractice(); P.wake(); training = !!P.info()?.training; }
+  const requested = {code, key, generation: ++sessionGeneration, ...(inPractice ? {practice: true, training} : {})};
   session = requested;
+  loadMissions();
   const receipt = read(`sx-pending-${code}`);
   pending = receipt?.owner === key ? receipt.command : null;
   pendingScope = receipt?.scope || '';
@@ -1221,7 +1532,7 @@ async function resume(code, key, inPractice = false) {
 
 function closeRoom() {
   state = null; session = null; pending = null; flash = null; view = 'ops'; menuOpen = false; timelineOpen = false; shownWorth = null;
-  forget('sx-active'); clearTimeout(seq.timer); coach.detach();
+  forget('sx-active'); clearTimeout(seq.timer); missions = null; $('#r-mission')?.replaceChildren();
   $('#app').innerHTML = '';
   if ($('#dialog').open) $('#dialog').close();
 }
@@ -1285,6 +1596,7 @@ document.addEventListener('submit', async event => {
 });
 
 document.addEventListener('click', async event => {
+  if (soundOn()) setSound(true);
   if (menuOpen && !event.target.closest('.menu-wrap')) { menuOpen = false; render(); }
   if (timelineOpen && !event.target.closest('.phase')) { timelineOpen = false; render(); }
   const jump = event.target.closest('.jump a[href^="#"]');
@@ -1304,9 +1616,28 @@ document.addEventListener('click', async event => {
   try {
     switch (a) {
       case 'help': help(); break;
-      case 'practice': await startPractice(); break;
+      case 'field-view': fieldView = d.view; save('sx-field-view', fieldView); render(); $(`#view-${fieldView}`)?.focus(); break;
+      case 'pick': { const col = $(`#sector-${d.sector}`); if (!col) break;
+        col.scrollIntoView({behavior: reduceMotion() ? 'auto' : 'smooth', block: 'nearest'});
+        col.classList.remove('picked'); void col.offsetWidth; col.classList.add('picked');
+        col.querySelector('button:not([disabled]), input:not([disabled])')?.focus({preventScroll: true}); break; }
+      case 'practice': await startPractice(true); break;
+      case 'practice-free': await startPractice(false); break;
       case 'practice-continue': await continuePractice(); break;
-      case 'guide': if ($('#dialog').open) $('#dialog').close(); if (!coach.reopen()) toast('The guide covers rounds 1 and 2. Choose “Restart practice” in the menu to see it again.'); break;
+      case 'missions': missionsDialog(); break;
+      case 'sound': { const now = setSound(!soundOn()); save('sx-sound', now); cue('settle'); render(); toast(now ? 'Sound cues on: dispatch, scans, locking, hazards, docking and settlement.' : 'Sound cues off.'); break; }
+      case 'mission-toggle': missions.hidden = !missions.hidden; saveMissions(); missionSync(); $('#mission-toggle')?.focus(); break;
+      case 'mission-details': missions.details = !missions.details; saveMissions(); missionSync(); $('#mission-details')?.focus(); break;
+      case 'mission-hint': { const n = missions.active; missions.hints[n] = (missions.hints[n] || 0) + 1; saveMissions(); missionSync(); $('.mission-hints li:last-child')?.scrollIntoView({block: 'nearest'}); announce($('.mission-hints li:last-child')?.textContent || ''); break; }
+      case 'mission-show': { const t = $('.guide-target'); if (!t) break; t.scrollIntoView({behavior: reduceMotion() ? 'auto' : 'smooth', block: 'center'});
+        (t.matches('button, input, a[href]') ? t : t.querySelector('button:not([disabled]), input:not([disabled])'))?.focus({preventScroll: true}); break; }
+      case 'mission-answer': flagsFor(missions.active).prediction = d.value; saveMissions(); missionSync(); $('.mission-feedback')?.setAttribute('tabindex', '-1'); $('.mission-feedback')?.focus(); break;
+      case 'mission-next': if (state.phase === 'upgrade' && !state.you.ready) await command('ready'); break;
+      case 'mission-retry': await retryMission(Number(d.n)); break;
+      case 'mission-prepared': await preparedMission(Number(d.n)); break;
+      case 'mission-free': if ($('#dialog').open) $('#dialog').close(); missions.active = 'free'; saveMissions(); missionSync(); toast('Free practice: the training rival plays its steady routine and every draw is random.'); break;
+      case 'mission-final': finalDebrief(); break;
+      case 'missions-resume': { $('#dialog').close(); const done = MISSIONS.filter(m => missions.results[m.n]).length; missions.active = Math.min(4, done + 1); saveMissions(); missionSync(); break; }
       case 'key': keyDialog(); break;
       case 'worth': worthDialog(); break;
       case 'review': reviewDialog(); break;
@@ -1335,7 +1666,7 @@ document.addEventListener('click', async event => {
       case 'confirm-retire': $('#dialog').close(); await command('purchase', {item: 'retire', drone_id: Number(d.id)}, 'purchase'); break;
       case 'assign': {
         const id = d.drone, j = Number(d.sector);
-        if (draft.allocation[id] === j) delete draft.allocation[id]; else draft.allocation[id] = j;
+        if (draft.allocation[id] === j) delete draft.allocation[id]; else { draft.allocation[id] = j; cue('dispatch'); }
         draftChanged(); break; }
       case 'side': draft[d.kind][d.j].side = d.side; draftChanged(); break;
       case 'step': {
@@ -1352,6 +1683,7 @@ document.addEventListener('click', async event => {
         const ev = evaluation();
         if (!ev.valid) { reviewDialog(); break; }
         $('#dialog').close();
+        if (missions?.active === 4 && preview) { flagsFor(4).lockEstimate = {value: M.sum(preview.salvage_value), deployment: ev.totals.deployment}; saveMissions(); }
         await command('lock', {plan: ev.plan}, 'lock'); break; }
       case 'goto': { $('#dialog').close(); const t = document.getElementById(d.target); t?.scrollIntoView({block: 'center'}); (t?.matches('input,button') ? t : t?.querySelector('input,button'))?.focus({preventScroll: true}); break; }
       case 'seq-skip': endSequence(); announce('Showing the full result.'); break;
@@ -1359,8 +1691,9 @@ document.addEventListener('click', async event => {
         const el = $('.seq-live'); if (!el) break;
         if (reduceMotion()) { announce('Reduced motion is on, so the result is shown without playback.'); break; }
         clearTimeout(seq.timer); el.classList.remove('playing'); void el.offsetWidth; el.classList.add('playing');
-        seq.playing = true; seq.tweened = 0; setNote('Replaying the settlement that already ran. Nothing is recalculated.');
-        tweenHeadline(); coach.sync();
+        (seq.cues || []).forEach(clearTimeout);
+        seq.playing = true; seq.tweened = 0; seq.cues = revealCues(state.history.at(-1)); setNote('Replaying the settlement that already ran. Nothing is recalculated.');
+        tweenHeadline();
         seq.timer = setTimeout(endSequence, 3700); break; }
     }
   } catch (err) { setFlash('general', err.message); }
@@ -1398,13 +1731,11 @@ addEventListener('resize', () => { if (narrow() !== wasNarrow) { wasNarrow = nar
 
 $('.dialog-close').addEventListener('click', () => $('#dialog').close());
 $('#dialog').addEventListener('click', e => { if (e.target === $('#dialog')) $('#dialog').close(); });
-// The guide waits for the dialog's entrance to finish before pointing inside it.
-for (const type of ['transitionend', 'animationend']) $('#dialog').addEventListener(type, e => { if (e.target === $('#dialog')) coach.sync(); });
 $('#dialog').addEventListener('close', () => {
   const el = dialogReturn && document.getElementById(dialogReturn);
   if (el) el.focus();
   dialogReturn = null;
-  coach.sync();
+  if (state) missionSync();
 });
 
 async function poll() {
@@ -1424,7 +1755,7 @@ const active = read('sx-active');
 if (!active) render();
 else {
   $('#app').innerHTML = '<main class="boot" id="main"><p>Reopening your room…</p></main>';
-  resume(active.code, active.key, !!active.practice).then(() => { if (active.practice) coach.resume(); }).catch(err => {
+  resume(active.code, active.key, !!active.practice).catch(err => {
     state = null; session = null;
     landingNotice = active.practice ? 'Couldn’t reopen your practice match. Start a new one below.'
       : `Couldn’t reopen room ${active.code}: ${err.status === 404 ? 'it no longer exists on this server' : err.status === 401 ? 'the key saved in this browser doesn’t open it, or the room was removed' : 'the server didn’t answer'}. ${err.status ? '' : 'Try again from “Your rooms”.'}`;

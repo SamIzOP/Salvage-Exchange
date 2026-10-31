@@ -10,9 +10,9 @@ The original server is a long-running Python process, so the repository now also
 
 | Python (`server/`) | Worker (`worker/src/`) |
 |---|---|
-| `simulation/economy.py` (frozen rules) | `economy.js`, a line-for-line port of the functions the server uses |
-| `game.py` | `game.js`, the same commands, errors, projections, previews and settlement reports |
-| `models.py` (pydantic) | `schema.js`, the same strict fields, types, bounds and defaults |
+| `simulation/economy.py` (frozen rules) | `web/engine/economy.js`, a line-for-line port of the functions the server uses |
+| `game.py` | `web/engine/game.js`, the same commands, errors, projections, previews and settlement reports |
+| `models.py` (pydantic) | `web/engine/schema.js`, the same strict fields, types, bounds and defaults |
 | `store.py` (SQLite with `BEGIN IMMEDIATE`) | `store.js` (D1). Each write is one atomic batch conditioned on the revision the writer read; a lost race is re-read and retried, so a round settles exactly once |
 | `app.py` (FastAPI) | `index.js`, the same routes, statuses, error details, body limit, origin check and security headers |
 
@@ -28,7 +28,7 @@ Rooms use the same JSON format and tables. A room created by one implementation 
 
    `wrangler.jsonc` declares all of this.
 
-   `dist/` also contains `engine/`, a copy of the Worker's game modules that the build makes for the in-browser guided practice. It's served as ordinary static files, and practice never calls the API.
+   The browser's training missions run the same game engine in the page, from `web/engine/` (`economy.js`, `schema.js`, `game.js` and `rules.js`). These are ordinary files in `web/`, so the build copies them to `dist/engine/` like everything else, and practice never calls the API.
 3. **On ChatGPT Sites:** import this repository or project and point it at `wrangler.jsonc`. If Sites expects a different project layout, keep the same entry point and the two binding names. I couldn't check the exact import steps, because OpenAI's help pages weren't reachable from this environment.
 4. **On plain Cloudflare Workers:** run `npx wrangler d1 create salvage-exchange`, put the returned ID into `wrangler.jsonc`, then `npm run worker:deploy`.
 
@@ -42,6 +42,23 @@ Optional variables:
 
 Run it locally with `npm run worker:dev` (http://127.0.0.1:8787).
 
+## Packaging with a Sites adapter
+
+If your Sites setup embeds the browser files itself (for example a local `scripts/build-sites.mjs` that bundles `web/`), it must include everything the page loads:
+- `web/engine/economy.js`, `web/engine/schema.js`, `web/engine/game.js` and `web/engine/rules.js`;
+- the other modules `web/app.js` imports.
+
+Serve every `.js` file as `text/javascript`. Run `node scripts/build.mjs` first: it regenerates `web/engine/rules.js` if the rules JSON changed, and it rebuilds `dist/` from scratch, so files removed from `web/` don't linger.
+
+`npm test` lists every module the client loads (`tests/practice.test.mjs`, last test) and fails if any is missing from `web/` or `dist/`.
+
+To check a deployed Site:
+1. Open it in a private window and choose Learn by playing.
+2. Play mission 1 to its debrief.
+3. Confirm the browser's network panel shows no `/api/` requests while practising.
+
+The adapter used for the live Site isn't in this repository, so it couldn't be updated or checked here. Replacing its copy of `web/` without `web/engine/` breaks practice.
+
 ## Differences from the Python server
 
 - **Rate limits are best effort.** They are counted per Worker isolate, not across the whole deployment. Use the host's edge rate limiting in production.
@@ -54,7 +71,7 @@ Run it locally with `npm run worker:dev` (http://127.0.0.1:8787).
 
 ## Keeping the two implementations identical
 
-The frozen economy now exists twice. Any rule change must be made in both `simulation/economy.py` and `worker/src/economy.js`; `npm run test:worker` fails if they disagree. The Python reference must run on Python 3.12 or newer: from 3.12, `sum()` over floats uses Neumaier compensated summation, the port reproduces that, and Python 3.11 rounds differently in the last bit.
+The frozen economy now exists twice. Any rule change must be made in both `simulation/economy.py` and `web/engine/economy.js`; `npm run test:worker` fails if they disagree. The Python reference must run on Python 3.12 or newer: from 3.12, `sum()` over floats uses Neumaier compensated summation, the port reproduces that, and Python 3.11 rounds differently in the last bit.
 
 ## Verification
 

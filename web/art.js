@@ -1,34 +1,5 @@
-// Original line-art for the three salvage sites and a small icon set. Every drawing uses
-// currentColor with one stroke weight so the identities stay consistent wherever they appear.
-const SITES = [
-  // Crystal Belt: a fractured mineral belt strung along an orbit.
-  `<path class="o" d="M4 76C48 54 104 44 156 50"/>
-  <path class="f" d="M14 70l5-10 7 3-2 9z"/>
-  <path class="f" d="M33 64l5-16 9-4 5 11-6 9z"/><path class="d" d="M38 48l6 8 2 8M44 56l8-1"/>
-  <path class="f" d="M66 60l5-26 9-10 8 14-2 20-10 6z"/><path class="d" d="M80 24l-2 20-2 20M78 44l10-6M71 34l7 10"/>
-  <path class="f" d="M86 58l8-16 7 6-3 12z"/>
-  <path class="f" d="M110 56l4-12 10-4 6 9-6 9z"/><path class="d" d="M114 44l7 6 3 8M121 50l9-1"/>
-  <path class="f" d="M138 54l3-8 7-1 2 7-6 4z"/>
-  <g class="p"><circle cx="28" cy="57" r="1"/><circle cx="58" cy="44" r="1"/><circle cx="104" cy="38" r="1"/><circle cx="134" cy="39" r="1"/><circle cx="153" cy="60" r="1"/></g>`,
-  // Derelict Cruiser: a hull broken in two, ribs exposed at the fracture.
-  `<path class="o" d="M4 80h152"/>
-  <path class="f" d="M8 58l18-12 32-6 8 2-4 6 6 4-6 6-32 4z"/>
-  <path class="d" d="M34 45l4-9h12l2 6M40 51h4M48 50h4"/>
-  <path class="f" d="M80 38l4 6-6 4 6 6-4 6 38 2 20-4 12-8-12-8-20-6z"/>
-  <path class="d" d="M89 38v22M96 37v24M103 36v26M108 49h28M138 42v16M150 46h6M150 54h6"/>
-  <path class="f" d="M70 44l4-2 1 4zM71 56l4-2 1 4z"/>
-  <g class="p"><circle cx="76" cy="50" r="1"/><circle cx="66" cy="34" r="1"/><circle cx="92" cy="68" r="1"/></g>`,
-  // Void Rift: a jagged tear that bends the space around it.
-  `<path class="o" d="M4 20c46 0 56-8 76-8s30 8 76 8M4 76c46 0 56 8 76 8s30-8 76-8"/>
-  <path class="d" d="M4 36c40 0 54-6 66-6M90 30c12 0 26 6 66 6M4 60c40 0 54 6 66 6M90 66c12 0 26-6 66-6"/>
-  <path class="f" d="M80 8l6 16-4 10 8 14-8 14 4 12-6 16-6-18 4-12-8-12 8-12-4-14z"/>
-  <path class="d" d="M80 20l-2 16 6 12-6 14 2 16"/>
-  <g class="p"><circle cx="62" cy="48" r="1"/><circle cx="99" cy="44" r="1"/><circle cx="68" cy="22" r="1"/><circle cx="94" cy="76" r="1"/></g>`,
-];
-
-export const art = (j, cls = '') =>
-  `<svg class="site-art ${cls}" viewBox="0 0 160 96" aria-hidden="true" focusable="false">${SITES[j]}</svg>`;
-
+// Interface icons, the drone glyph used in small controls, and the logo mark. The illustrated
+// artwork (sites, yard, cargo, insignia) lives in scene.js.
 const ICONS = {
   copy: '<path d="M9 9h10v10H9zM5 15V5h10"/>',
   check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
@@ -52,6 +23,7 @@ const ICONS = {
   ops: '<path d="M4 18l5-6 4 3 7-9M15 6h5v5"/>',
   sync: '<path d="M20 12a8 8 0 0 1-14 5.3M4 12a8 8 0 0 1 14-5.3M18 3v4h-4M6 21v-4h4"/>',
   dot: '<circle cx="12" cy="12" r="3"/>',
+  sound: '<path d="M4 9h4l5-4v14l-5-4H4zM16.5 9a4 4 0 0 1 0 6M19 6.5a7.5 7.5 0 0 1 0 11"/>',
 };
 
 export const icon = (name, cls = '') =>
